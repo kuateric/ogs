@@ -103,10 +103,10 @@ jobs:
           printf 'process\tcohesion\tdeactivation\texit_code\tconverged_marker\n' > actplas-evidence/matrix.tsv
           printf 'harness_start=ok\n' > actplas-evidence/harness.txt
 
-          OGS_BIN="$(find "$(pwd)/build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
+          OGS_BIN="$(find "$(pwd)/../build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
           if [ -z "${OGS_BIN}" ]; then
             printf 'ogs_binary=NOT_FOUND\n' | tee -a actplas-evidence/harness.txt
-            find "$(pwd)/build" -maxdepth 5 -type f -name 'ogs*' -print >> actplas-evidence/harness.txt 2>&1 || true
+            find "$(pwd)/../build" -maxdepth 5 -type f -name 'ogs*' -print >> actplas-evidence/harness.txt 2>&1 || true
             exit 0
           fi
           OGS_BIN="$(readlink -f "${OGS_BIN}")"
