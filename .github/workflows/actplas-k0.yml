@@ -99,9 +99,19 @@ jobs:
         working-directory: ogs-upstream
         run: |
           set -uo pipefail
-          OGS_BIN="$(pwd)/build/release/bin/ogs"; test -x "$OGS_BIN"
           mkdir -p actplas-evidence/logs
-          printf 'process\tcohesion\tdeactivation\texit_code\n' > actplas-evidence/matrix.tsv
+          printf 'process\tcohesion\tdeactivation\texit_code\tconverged_marker\n' > actplas-evidence/matrix.tsv
+          printf 'harness_start=ok\n' > actplas-evidence/harness.txt
+
+          OGS_BIN="$(find "$(pwd)/build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
+          if [ -z "${OGS_BIN}" ]; then
+            printf 'ogs_binary=NOT_FOUND\n' | tee -a actplas-evidence/harness.txt
+            find "$(pwd)/build" -maxdepth 5 -type f -name 'ogs*' -print >> actplas-evidence/harness.txt 2>&1 || true
+            exit 0
+          fi
+          OGS_BIN="$(readlink -f "${OGS_BIN}")"
+          printf 'ogs_binary=%s\n' "${OGS_BIN}" | tee -a actplas-evidence/harness.txt
+
           for proc in SM HM TRM; do
             prj=A2.prj; [ "$proc" = SM ] && prj=time_linear_excavation.prj
             for c in 5E6 2E6 1E6 5E5; do
@@ -109,8 +119,18 @@ jobs:
                 dir="actplas-cases/${proc}_c${c}"; [ "$mode" = NO_DEACT ] && dir="${dir}_NO_DEACT"
                 outdir="$(pwd)/actplas-evidence/out_${proc}_${c}_${mode}"; mkdir -p "$outdir"
                 log="$(pwd)/actplas-evidence/logs/${proc}_${c}_${mode}.log"
-                (cd "$dir" && "$OGS_BIN" -o "$outdir" "$prj") >"$log" 2>&1; rc=$?
-                printf '%s\t%s\t%s\t%s\n' "$proc" "$c" "$mode" "$rc" | tee -a actplas-evidence/matrix.tsv
+                printf '===== %s cohesion=%s mode=%s =====\n' "$proc" "$c" "$mode" > "$log"
+                if [ ! -d "$dir" ] || [ ! -f "$dir/$prj" ]; then
+                  printf 'HARNESS_CASE_MISSING dir=%s prj=%s\n' "$dir" "$prj" >> "$log"
+                  rc=125
+                else
+                  set +e
+                  (cd "$dir" && "$OGS_BIN" -o "$outdir" "$prj") >>"$log" 2>&1
+                  rc=$?
+                  set -e
+                fi
+                if grep -Eqi 'converged|Time step.*accepted|simulation terminated successfully|OGS terminated successfully' "$log"; then marker=yes; else marker=no; fi
+                printf '%s\t%s\t%s\t%s\t%s\n' "$proc" "$c" "$mode" "$rc" "$marker" | tee -a actplas-evidence/matrix.tsv
               done
             done
           done
@@ -123,6 +143,8 @@ jobs:
         run: |
           mkdir -p actplas-evidence
           printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" > actplas-evidence/provenance.txt
+          test -f actplas-evidence/harness.txt && cat actplas-evidence/harness.txt || true
+          test -f actplas-evidence/matrix.tsv && cat actplas-evidence/matrix.tsv || true
 
       - name: Upload ACTPLAS K0 evidence
         if: always()
