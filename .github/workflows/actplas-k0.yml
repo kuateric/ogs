@@ -30,14 +30,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "${OGS_UPSTREAM_SHA}"
           test -f Tests/Data/Mechanics/Excavation/time_linear_excavation.prj
           test -f Tests/Data/Mechanics/MohrCoulombAbboSloan/slope.prj
-          test -f Tests/Data/HydroMechanics/A2/A2.prj
-          test -f Tests/Data/ThermoRichardsMechanics/A2/A2.prj
           test -f MaterialLib/SolidModels/MFront/MohrCoulombAbboSloan.mfront
 
       - name: Install build prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3 python3-pip
+
+      - name: Restore frozen ACTPLAS runtime cache
+        id: runtime-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-actplas-runtime-ubuntu24-adf770974c7ee0435702fe617634d03d17ab7cb8-sm-hm-trm-mfront-v1
 
       - name: Configure OGS with SM HM TRM and MFront
         working-directory: ogs-upstream
@@ -50,106 +57,194 @@ jobs:
             -DOGS_USE_MFRONT=ON \
             '-DOGS_BUILD_PROCESSES=SmallDeformation;HydroMechanics;ThermoRichardsMechanics'
 
-      - name: Build OGS
+      - name: Build OGS runtime
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
           cmake --build --preset release --parallel 2
 
-      - name: Run official upstream controls
+      - name: Locate OGS binary
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
           mkdir -p actplas-evidence
-          ctest --preset release -N | tee actplas-evidence/test-list.txt
-          ctest --preset release --output-on-failure -R 'time_linear_excavation' | tee actplas-evidence/sm-elastic.txt
-          ctest --preset release --output-on-failure -R 'MohrCoulombAbboSloan.*slope|slope.*MohrCoulombAbboSloan' | tee actplas-evidence/sm-mc-control.txt
-          ctest --preset release --output-on-failure -R 'HydroMechanics/A2|HM.*A2' | tee actplas-evidence/hm-elastic.txt
-          ctest --preset release --output-on-failure -R 'ThermoRichardsMechanics/A2|TRM.*A2' | tee actplas-evidence/trm-elastic.txt
+          OGS_BIN="$(find "$(pwd)/../build/release" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
+          if [ -z "${OGS_BIN}" ]; then
+            OGS_BIN="$(find "$(pwd)/../build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
+          fi
+          test -n "${OGS_BIN}"
+          OGS_BIN="$(readlink -f "${OGS_BIN}")"
+          echo "OGS_BIN=${OGS_BIN}" >> "$GITHUB_ENV"
+          printf 'cache_hit=%s\nogs_binary=%s\n' '${{ steps.runtime-cache.outputs.cache-hit }}' "${OGS_BIN}" | tee actplas-evidence/runtime.txt
 
-      - name: Prepare SM HM TRM Mohr-Coulomb variants
+      - name: Run exact upstream SM controls directly
+        working-directory: ogs-upstream
+        run: |
+          set -uo pipefail
+          mkdir -p actplas-evidence/controls
+          printf 'control\texit_code\n' > actplas-evidence/controls.tsv
+
+          run_control() {
+            name="$1"; dir="$2"; prj="$3"
+            outdir="$(pwd)/actplas-evidence/controls/out_${name}"
+            log="$(pwd)/actplas-evidence/controls/${name}.log"
+            mkdir -p "$outdir"
+            set +e
+            (cd "$dir" && "$OGS_BIN" -o "$outdir" "$prj") >"$log" 2>&1
+            rc=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$rc" | tee -a actplas-evidence/controls.tsv
+          }
+
+          run_control SM_ELASTIC_EXCAVATION Tests/Data/Mechanics/Excavation time_linear_excavation.prj
+          run_control SM_MC_SLOPE Tests/Data/Mechanics/MohrCoulombAbboSloan slope.prj
+          cat actplas-evidence/controls.tsv
+
+      - name: Prepare isolated SM Mohr-Coulomb excavation pair
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           import pathlib, re, shutil
+
           root = pathlib.Path.cwd()
-          out = root / 'actplas-cases'; out.mkdir(exist_ok=True)
-          cases = {'SM': root/'Tests/Data/Mechanics/Excavation', 'HM': root/'Tests/Data/HydroMechanics/A2', 'TRM': root/'Tests/Data/ThermoRichardsMechanics/A2'}
-          prjs = {'SM':'time_linear_excavation.prj','HM':'A2.prj','TRM':'A2.prj'}
-          relation = '''<constitutive_relation id="0,1"><type>MFront</type><behaviour>MohrCoulombAbboSloan</behaviour><material_properties><material_property name="YoungModulus" parameter="E"/><material_property name="PoissonRatio" parameter="nu"/><material_property name="Cohesion" parameter="MC_Cohesion"/><material_property name="FrictionAngle" parameter="MC_FrictionAngle"/><material_property name="DilatancyAngle" parameter="MC_DilatancyAngle"/><material_property name="TransitionAngle" parameter="MC_TransitionAngle"/><material_property name="TensionCutOffParameter" parameter="MC_TensionCutOff"/></material_properties></constitutive_relation>'''
-          params = '''<parameter><name>MC_Cohesion</name><type>Constant</type><value>{}</value></parameter><parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter><parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter><parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter><parameter><name>MC_TensionCutOff</name><type>Constant</type><value>1e6</value></parameter>'''
-          for proc, src in cases.items():
-            for cohesion in ('5e6','2e6','1e6','5e5'):
-              tag=cohesion.replace('e','E'); dst=out/f'{proc}_c{tag}'; shutil.copytree(src,dst)
-              p=dst/prjs[proc]; text=p.read_text(encoding='latin-1')
-              text,n=re.subn(r'<constitutive_relation(?:\s+id="[^"]+")?>.*?</constitutive_relation>',relation,text,flags=re.S)
-              if n<1: raise RuntimeError(f'No constitutive relation in {p}')
-              if n>1:
-                first=text.find(relation); text=text[:first+len(relation)]+text[first+len(relation):].replace(relation,'')
-              text=text.replace('</parameters>',params.format(cohesion)+'</parameters>'); p.write_text(text,encoding='latin-1')
-              ctrl=out/f'{proc}_c{tag}_NO_DEACT'; shutil.copytree(dst,ctrl)
-              cp=ctrl/prjs[proc]; ctext=cp.read_text(encoding='latin-1')
-              ctext,removed=re.subn(r'\s*<deactivated_subdomains>.*?</deactivated_subdomains>','',ctext,flags=re.S)
-              if removed<1: raise RuntimeError(f'No deactivated_subdomains in {cp}')
-              cp.write_text(ctext,encoding='latin-1')
+          src = root / 'Tests/Data/Mechanics/Excavation'
+          cases = root / 'actplas-cases'
+          cases.mkdir(exist_ok=True)
+
+          old_relation = '''            <constitutive_relation id="0,1">
+                <type>LinearElasticIsotropic</type>
+                <youngs_modulus>E</youngs_modulus>
+                <poissons_ratio>nu</poissons_ratio>
+            </constitutive_relation>'''
+
+          mc_relation = '''            <constitutive_relation id="0,1">
+                <type>MFront</type>
+                <behaviour>MohrCoulombAbboSloan</behaviour>
+                <material_properties>
+                    <material_property name="YoungModulus" parameter="E"/>
+                    <material_property name="PoissonRatio" parameter="nu"/>
+                    <material_property name="Cohesion" parameter="MC_Cohesion"/>
+                    <material_property name="FrictionAngle" parameter="MC_FrictionAngle"/>
+                    <material_property name="DilatancyAngle" parameter="MC_DilatancyAngle"/>
+                    <material_property name="TransitionAngle" parameter="MC_TransitionAngle"/>
+                    <material_property name="TensionCutOffParameter" parameter="MC_TensionCutOff"/>
+                </material_properties>
+            </constitutive_relation>'''
+
+          mc_parameters = '''        <parameter>
+            <name>T_ref</name>
+            <type>Constant</type>
+            <values>293.15</values>
+        </parameter>
+        <parameter>
+            <name>MC_Cohesion</name>
+            <type>Constant</type>
+            <value>5e6</value>
+        </parameter>
+        <parameter>
+            <name>MC_FrictionAngle</name>
+            <type>Constant</type>
+            <value>25</value>
+        </parameter>
+        <parameter>
+            <name>MC_DilatancyAngle</name>
+            <type>Constant</type>
+            <value>10</value>
+        </parameter>
+        <parameter>
+            <name>MC_TransitionAngle</name>
+            <type>Constant</type>
+            <value>27</value>
+        </parameter>
+        <parameter>
+            <name>MC_TensionCutOff</name>
+            <type>Constant</type>
+            <value>1e6</value>
+        </parameter>
+'''
+
+          deact = cases / 'SM_MC_DEACT'
+          shutil.copytree(src, deact, dirs_exist_ok=True)
+          prj = deact / 'time_linear_excavation.prj'
+          text = prj.read_text(encoding='latin-1')
+
+          if text.count(old_relation) != 1:
+              raise RuntimeError('Expected exactly one LinearElastic constitutive relation')
+          text = text.replace(old_relation, mc_relation)
+
+          marker = '            <specific_body_force>0 0</specific_body_force>'
+          if text.count(marker) != 1:
+              raise RuntimeError('Unexpected specific_body_force layout')
+          text = text.replace(marker, marker + '\n            <reference_temperature>T_ref</reference_temperature>')
+
+          if text.count('    </parameters>') != 1:
+              raise RuntimeError('Unexpected parameters layout')
+          text = text.replace('    </parameters>', mc_parameters + '    </parameters>')
+          prj.write_text(text, encoding='latin-1')
+
+          no_deact = cases / 'SM_MC_NO_DEACT'
+          shutil.copytree(deact, no_deact, dirs_exist_ok=True)
+          prj2 = no_deact / 'time_linear_excavation.prj'
+          text2 = prj2.read_text(encoding='latin-1')
+          text2, n = re.subn(r'\s*<deactivated_subdomains>.*?</deactivated_subdomains>', '', text2, count=1, flags=re.S)
+          if n != 1:
+              raise RuntimeError('Expected exactly one deactivated_subdomains block')
+          prj2.write_text(text2, encoding='latin-1')
+
+          # Evidence that only the intended semantic changes were made.
+          (root / 'actplas-evidence' / 'generated-prj-summary.txt').write_text(
+              'SM_MC_DEACT: upstream Excavation + MFront MohrCoulombAbboSloan + T_ref + MC parameters; deactivation preserved\n'
+              'SM_MC_NO_DEACT: identical to SM_MC_DEACT except deactivated_subdomains removed\n',
+              encoding='utf-8')
           PY
 
-      - name: Run plasticity x deactivation matrix
+      - name: Run ACTPLAS R01 SM pair
         working-directory: ogs-upstream
         run: |
           set -uo pipefail
           mkdir -p actplas-evidence/logs
-          printf 'process\tcohesion\tdeactivation\texit_code\tconverged_marker\n' > actplas-evidence/matrix.tsv
-          printf 'harness_start=ok\n' > actplas-evidence/harness.txt
+          printf 'case\texit_code\tsuccess_marker\tnonlinear_failure_marker\n' > actplas-evidence/sm-r01.tsv
 
-          OGS_BIN="$(find "$(pwd)/../build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
-          if [ -z "${OGS_BIN}" ]; then
-            printf 'ogs_binary=NOT_FOUND\n' | tee -a actplas-evidence/harness.txt
-            find "$(pwd)/../build" -maxdepth 5 -type f -name 'ogs*' -print >> actplas-evidence/harness.txt 2>&1 || true
-            exit 0
-          fi
-          OGS_BIN="$(readlink -f "${OGS_BIN}")"
-          printf 'ogs_binary=%s\n' "${OGS_BIN}" | tee -a actplas-evidence/harness.txt
+          run_case() {
+            name="$1"
+            dir="actplas-cases/$name"
+            outdir="$(pwd)/actplas-evidence/out_${name}"
+            log="$(pwd)/actplas-evidence/logs/${name}.log"
+            mkdir -p "$outdir"
+            set +e
+            (cd "$dir" && "$OGS_BIN" -o "$outdir" time_linear_excavation.prj) >"$log" 2>&1
+            rc=$?
+            set -e
+            if grep -Eqi 'simulation terminated successfully|OGS terminated successfully|Time step.*accepted' "$log"; then success=yes; else success=no; fi
+            if grep -Eqi 'Newton.*fail|nonlinear.*fail|did not converge|maximum number of iterations|time step.*fail' "$log"; then nlfail=yes; else nlfail=no; fi
+            printf '%s\t%s\t%s\t%s\n' "$name" "$rc" "$success" "$nlfail" | tee -a actplas-evidence/sm-r01.tsv
+          }
 
-          for proc in SM HM TRM; do
-            prj=A2.prj; [ "$proc" = SM ] && prj=time_linear_excavation.prj
-            for c in 5E6 2E6 1E6 5E5; do
-              for mode in NO_DEACT DEACT; do
-                dir="actplas-cases/${proc}_c${c}"; [ "$mode" = NO_DEACT ] && dir="${dir}_NO_DEACT"
-                outdir="$(pwd)/actplas-evidence/out_${proc}_${c}_${mode}"; mkdir -p "$outdir"
-                log="$(pwd)/actplas-evidence/logs/${proc}_${c}_${mode}.log"
-                printf '===== %s cohesion=%s mode=%s =====\n' "$proc" "$c" "$mode" > "$log"
-                if [ ! -d "$dir" ] || [ ! -f "$dir/$prj" ]; then
-                  printf 'HARNESS_CASE_MISSING dir=%s prj=%s\n' "$dir" "$prj" >> "$log"
-                  rc=125
-                else
-                  set +e
-                  (cd "$dir" && "$OGS_BIN" -o "$outdir" "$prj") >>"$log" 2>&1
-                  rc=$?
-                  set -e
-                fi
-                if grep -Eqi 'converged|Time step.*accepted|simulation terminated successfully|OGS terminated successfully' "$log"; then marker=yes; else marker=no; fi
-                printf '%s\t%s\t%s\t%s\t%s\n' "$proc" "$c" "$mode" "$rc" "$marker" | tee -a actplas-evidence/matrix.tsv
-              done
-            done
-          done
-          cat actplas-evidence/matrix.tsv
+          run_case SM_MC_NO_DEACT
+          run_case SM_MC_DEACT
+          cat actplas-evidence/sm-r01.tsv
           exit 0
 
-      - name: Freeze provenance
+      - name: Freeze provenance and generated projects
         if: always()
         working-directory: ogs-upstream
         run: |
-          mkdir -p actplas-evidence
-          printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" > actplas-evidence/provenance.txt
-          test -f actplas-evidence/harness.txt && cat actplas-evidence/harness.txt || true
-          test -f actplas-evidence/matrix.tsv && cat actplas-evidence/matrix.tsv || true
+          mkdir -p actplas-evidence/generated-prj
+          printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" "$GITHUB_SHA" > actplas-evidence/provenance.txt
+          for d in SM_MC_NO_DEACT SM_MC_DEACT; do
+            if [ -f "actplas-cases/$d/time_linear_excavation.prj" ]; then
+              cp "actplas-cases/$d/time_linear_excavation.prj" "actplas-evidence/generated-prj/${d}.prj"
+            fi
+          done
+          cat actplas-evidence/runtime.txt 2>/dev/null || true
+          cat actplas-evidence/controls.tsv 2>/dev/null || true
+          cat actplas-evidence/sm-r01.tsv 2>/dev/null || true
 
-      - name: Upload ACTPLAS K0 evidence
+      - name: Upload ACTPLAS R01 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-actplas-k0-evidence
+          name: ogs-actplas-r01-evidence
           path: ogs-upstream/actplas-evidence/
           if-no-files-found: warn
