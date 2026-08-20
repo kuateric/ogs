@@ -45,9 +45,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ogs-upstream/build/release
+            build/release
             .cpm-cache
-          key: ogs-actplas-runtime-ubuntu24-adf770974c7ee0435702fe617634d03d17ab7cb8-sm-hm-trm-mfront-v2
+          key: ogs-actplas-runtime-ubuntu24-adf770974c7ee0435702fe617634d03d17ab7cb8-sm-hm-trm-mfront-v3
+          save-always: true
 
       - name: Configure OGS with SM HM TRM and MFront
         working-directory: ogs-upstream
@@ -71,8 +72,8 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p actplas-evidence
-          OGS_BIN="$(find "$(pwd)/build/release" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
-          if [ -z "${OGS_BIN}" ]; then OGS_BIN="$(find "$(pwd)/build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"; fi
+          OGS_BIN="$(find "${GITHUB_WORKSPACE}/build/release" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"
+          if [ -z "${OGS_BIN}" ]; then OGS_BIN="$(find "${GITHUB_WORKSPACE}/build" -type f -name ogs -perm -111 2>/dev/null | head -n1 || true)"; fi
           test -n "${OGS_BIN}"
           OGS_BIN="$(readlink -f "${OGS_BIN}")"
           echo "OGS_BIN=${OGS_BIN}" >> "$GITHUB_ENV"
