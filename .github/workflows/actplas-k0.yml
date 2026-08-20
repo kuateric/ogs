@@ -1,0 +1,133 @@
+name: OGS-ACTPLAS-K0
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/actplas-k0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plastic-deactivation-reproducer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "${OGS_UPSTREAM_URL}" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "${OGS_UPSTREAM_SHA}"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "${OGS_UPSTREAM_SHA}"
+          test -f Tests/Data/Mechanics/Excavation/time_linear_excavation.prj
+          test -f Tests/Data/Mechanics/MohrCoulombAbboSloan/slope.prj
+          test -f Tests/Data/HydroMechanics/A2/A2.prj
+          test -f Tests/Data/ThermoRichardsMechanics/A2/A2.prj
+          test -f MaterialLib/SolidModels/MFront/MohrCoulombAbboSloan.mfront
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3 python3-pip
+
+      - name: Configure OGS with SM HM TRM and MFront
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --preset release \
+            -DOGS_BUILD_GUI=OFF \
+            -DOGS_BUILD_UTILS=OFF \
+            -DOGS_BUILD_TESTING=ON \
+            -DOGS_USE_MFRONT=ON \
+            '-DOGS_BUILD_PROCESSES=SmallDeformation;HydroMechanics;ThermoRichardsMechanics'
+
+      - name: Build OGS
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --parallel 2
+
+      - name: Run official upstream controls
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          mkdir -p actplas-evidence
+          ctest --preset release -N | tee actplas-evidence/test-list.txt
+          ctest --preset release --output-on-failure -R 'time_linear_excavation' | tee actplas-evidence/sm-elastic.txt
+          ctest --preset release --output-on-failure -R 'MohrCoulombAbboSloan.*slope|slope.*MohrCoulombAbboSloan' | tee actplas-evidence/sm-mc-control.txt
+          ctest --preset release --output-on-failure -R 'HydroMechanics/A2|HM.*A2' | tee actplas-evidence/hm-elastic.txt
+          ctest --preset release --output-on-failure -R 'ThermoRichardsMechanics/A2|TRM.*A2' | tee actplas-evidence/trm-elastic.txt
+
+      - name: Prepare SM HM TRM Mohr-Coulomb variants
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import pathlib, re, shutil
+          root = pathlib.Path.cwd()
+          out = root / 'actplas-cases'; out.mkdir(exist_ok=True)
+          cases = {'SM': root/'Tests/Data/Mechanics/Excavation', 'HM': root/'Tests/Data/HydroMechanics/A2', 'TRM': root/'Tests/Data/ThermoRichardsMechanics/A2'}
+          prjs = {'SM':'time_linear_excavation.prj','HM':'A2.prj','TRM':'A2.prj'}
+          relation = '''<constitutive_relation id="0,1"><type>MFront</type><behaviour>MohrCoulombAbboSloan</behaviour><material_properties><material_property name="YoungModulus" parameter="E"/><material_property name="PoissonRatio" parameter="nu"/><material_property name="Cohesion" parameter="MC_Cohesion"/><material_property name="FrictionAngle" parameter="MC_FrictionAngle"/><material_property name="DilatancyAngle" parameter="MC_DilatancyAngle"/><material_property name="TransitionAngle" parameter="MC_TransitionAngle"/><material_property name="TensionCutOffParameter" parameter="MC_TensionCutOff"/></material_properties></constitutive_relation>'''
+          params = '''<parameter><name>MC_Cohesion</name><type>Constant</type><value>{}</value></parameter><parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter><parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter><parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter><parameter><name>MC_TensionCutOff</name><type>Constant</type><value>1e6</value></parameter>'''
+          for proc, src in cases.items():
+            for cohesion in ('5e6','2e6','1e6','5e5'):
+              tag=cohesion.replace('e','E'); dst=out/f'{proc}_c{tag}'; shutil.copytree(src,dst)
+              p=dst/prjs[proc]; text=p.read_text(encoding='latin-1')
+              text,n=re.subn(r'<constitutive_relation(?:\s+id="[^"]+")?>.*?</constitutive_relation>',relation,text,flags=re.S)
+              if n<1: raise RuntimeError(f'No constitutive relation in {p}')
+              if n>1:
+                first=text.find(relation); text=text[:first+len(relation)]+text[first+len(relation):].replace(relation,'')
+              text=text.replace('</parameters>',params.format(cohesion)+'</parameters>'); p.write_text(text,encoding='latin-1')
+              ctrl=out/f'{proc}_c{tag}_NO_DEACT'; shutil.copytree(dst,ctrl)
+              cp=ctrl/prjs[proc]; ctext=cp.read_text(encoding='latin-1')
+              ctext,removed=re.subn(r'\s*<deactivated_subdomains>.*?</deactivated_subdomains>','',ctext,flags=re.S)
+              if removed<1: raise RuntimeError(f'No deactivated_subdomains in {cp}')
+              cp.write_text(ctext,encoding='latin-1')
+          PY
+
+      - name: Run plasticity x deactivation matrix
+        working-directory: ogs-upstream
+        run: |
+          set -uo pipefail
+          OGS_BIN="$(pwd)/build/release/bin/ogs"; test -x "$OGS_BIN"
+          mkdir -p actplas-evidence/logs
+          printf 'process\tcohesion\tdeactivation\texit_code\n' > actplas-evidence/matrix.tsv
+          for proc in SM HM TRM; do
+            prj=A2.prj; [ "$proc" = SM ] && prj=time_linear_excavation.prj
+            for c in 5E6 2E6 1E6 5E5; do
+              for mode in NO_DEACT DEACT; do
+                dir="actplas-cases/${proc}_c${c}"; [ "$mode" = NO_DEACT ] && dir="${dir}_NO_DEACT"
+                outdir="$(pwd)/actplas-evidence/out_${proc}_${c}_${mode}"; mkdir -p "$outdir"
+                log="$(pwd)/actplas-evidence/logs/${proc}_${c}_${mode}.log"
+                (cd "$dir" && "$OGS_BIN" -o "$outdir" "$prj") >"$log" 2>&1; rc=$?
+                printf '%s\t%s\t%s\t%s\n' "$proc" "$c" "$mode" "$rc" | tee -a actplas-evidence/matrix.tsv
+              done
+            done
+          done
+          cat actplas-evidence/matrix.tsv
+          exit 0
+
+      - name: Freeze provenance
+        if: always()
+        working-directory: ogs-upstream
+        run: |
+          mkdir -p actplas-evidence
+          printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" > actplas-evidence/provenance.txt
+
+      - name: Upload ACTPLAS K0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-actplas-k0-evidence
+          path: ogs-upstream/actplas-evidence/
+          if-no-files-found: warn
