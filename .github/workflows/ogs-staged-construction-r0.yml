@@ -37,15 +37,16 @@ jobs:
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "${OGS_UPSTREAM_SHA}"
 
-      - name: Apply R0 lifecycle core
+      - name: Apply staged-construction lifecycle integration
         run: |
           set -euxo pipefail
           cp scripts/ogs-staged-construction-r0.py ogs-upstream/
           cd ogs-upstream
           python3 ogs-staged-construction-r0.py
           test -f ProcessLib/StagedConstruction/DomainLifecycle.h
+          grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
           git diff --check
-          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h
+          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/ProcessVariable.cpp
 
       - name: Compile lifecycle contract smoke test
         working-directory: ogs-upstream
@@ -100,18 +101,18 @@ jobs:
           set -euxo pipefail
           cmake --build --preset release --target ProcessLib SmallDeformation --parallel 2
 
-      - name: Freeze R0 evidence
+      - name: Freeze staged-construction evidence
         if: always()
         run: |
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           if [ -d ogs-upstream ]; then
-            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h) > staged-construction-evidence/r0.diff || true
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r1.diff || true
           fi
 
-      - name: Upload R0 evidence
+      - name: Upload staged-construction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r0-${{ github.sha }}
+          name: ogs-staged-construction-r1-${{ github.sha }}
           path: staged-construction-evidence
