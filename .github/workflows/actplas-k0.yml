@@ -1,3 +1,4 @@
+# ACTPLAS R01 diagnostic runner; canonical solver SHA frozen below.
 name: OGS-ACTPLAS-K0
 
 on:
