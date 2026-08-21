@@ -76,9 +76,9 @@ cmake.write_text(text.replace(needle, replacement), encoding="utf-8")
 
 process_variable = root / "ProcessLib/ProcessVariable.cpp"
 pv = process_variable.read_text(encoding="utf-8")
-include_anchor = '#include "ProcessLib/SourceTerm.h"\n'
 include_line = '#include "ProcessLib/StagedConstruction/DomainLifecycle.h"\n'
 if include_line not in pv:
+    include_anchor = '#include "ProcessLib/DeactivatedSubdomain.h"\n'
     if pv.count(include_anchor) != 1:
         raise RuntimeError("Unexpected ProcessVariable.cpp include layout")
     pv = pv.replace(include_anchor, include_anchor + include_line)
