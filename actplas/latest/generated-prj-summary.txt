@@ -1,2 +1,2 @@
-SM_MC_DEACT = exact upstream excavation with constitutive relation changed to MFront MohrCoulombAbboSloan; deactivation preserved
-SM_MC_NO_DEACT = identical project with deactivated_subdomains removed
+SM_MC_NO_DEACT_C5M = exact upstream excavation with MFront MohrCoulombAbboSloan and deactivated_subdomains removed; this is only a runtime/material-load control, not a matched excavation stress path.
+SM_MC_DEACT cohesion sweep = exact same upstream excavation/deactivation path and identical MC parameters except cohesion. High cohesion is intended as the near-elastic deactivation control; decreasing cohesion probes onset of plasticity-related failure.
