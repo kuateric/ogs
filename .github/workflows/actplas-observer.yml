@@ -33,7 +33,7 @@ jobs:
             CONCLUSION="${{ github.event.workflow_run.conclusion }}"
           else
             read -r RUN_ID HEAD_SHA CONCLUSION < <(
-              gh run list --repo "$GITHUB_REPOSITORY" --workflow actplas-k0.yml --limit 1 \
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow actplas-r01.yml --limit 1 \
                 --json databaseId,headSha,conclusion \
                 --jq '.[0] | [.databaseId,.headSha,(.conclusion // "in_progress")] | @tsv'
             )
