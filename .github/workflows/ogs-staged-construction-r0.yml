@@ -1,0 +1,117 @@
+name: OGS-STAGED-CONSTRUCTION-R0
+
+on:
+  push:
+    branches: [agent/ogs-staged-construction-r0]
+    paths:
+      - '.github/workflows/ogs-staged-construction-r0.yml'
+      - 'scripts/ogs-staged-construction-r0.py'
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-r0.yml'
+      - 'scripts/ogs-staged-construction-r0.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - name: Checkout implementation harness
+        uses: actions/checkout@v4
+
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "${OGS_UPSTREAM_URL}" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "${OGS_UPSTREAM_SHA}"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "${OGS_UPSTREAM_SHA}"
+
+      - name: Apply R0 lifecycle core
+        run: |
+          set -euxo pipefail
+          cp scripts/ogs-staged-construction-r0.py ogs-upstream/
+          cd ogs-upstream
+          python3 ogs-staged-construction-r0.py
+          test -f ProcessLib/StagedConstruction/DomainLifecycle.h
+          git diff --check
+          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h
+
+      - name: Compile lifecycle contract smoke test
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cat > /tmp/test_domain_lifecycle.cpp <<'CPP'
+          #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
+          #include <cassert>
+          #include <vector>
+
+          int main()
+          {
+              using ProcessLib::StagedConstruction::determineDomainTransition;
+              std::vector<unsigned char> previous{1, 1, 0, 1};
+              std::vector<unsigned char> current{1, 0, 1, 0};
+              auto const t = determineDomainTransition(previous, current);
+              assert((t.active_element_ids == std::vector<std::size_t>{0, 2}));
+              assert((t.newly_activated_element_ids == std::vector<std::size_t>{2}));
+              assert((t.newly_deactivated_element_ids == std::vector<std::size_t>{1, 3}));
+              return 0;
+          }
+          CPP
+          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_domain_lifecycle.cpp -o /tmp/test_domain_lifecycle
+          /tmp/test_domain_lifecycle
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+
+      - name: Configure canonical OGS
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --preset release \
+            -DOGS_BUILD_GUI=OFF \
+            -DOGS_BUILD_UTILS=OFF \
+            -DOGS_BUILD_TESTING=ON \
+            '-DOGS_BUILD_PROCESSES=SmallDeformation'
+
+      - name: Build ProcessLib and SmallDeformation
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --target ProcessLib SmallDeformation --parallel 2
+
+      - name: Freeze R0 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          if [ -d ogs-upstream ]; then
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h) > staged-construction-evidence/r0.diff || true
+          fi
+
+      - name: Upload R0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-r0-${{ github.sha }}
+          path: staged-construction-evidence
