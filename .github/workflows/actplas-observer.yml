@@ -1,0 +1,95 @@
+name: OGS-ACTPLAS Observer
+
+on:
+  workflow_run:
+    workflows: ["OGS-ACTPLAS-K0"]
+    types: [completed]
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/actplas-observer.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-latest:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+
+      - name: Resolve latest ACTPLAS run
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+            HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+            CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          else
+            read -r RUN_ID HEAD_SHA CONCLUSION < <(
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow actplas-k0.yml --limit 1 \
+                --json databaseId,headSha,conclusion \
+                --jq '.[0] | [.databaseId,.headSha,(.conclusion // "in_progress")] | @tsv'
+            )
+          fi
+          test -n "$RUN_ID"
+          printf 'RUN_ID=%s\nHEAD_SHA=%s\nCONCLUSION=%s\n' "$RUN_ID" "$HEAD_SHA" "$CONCLUSION" >> "$GITHUB_ENV"
+
+      - name: Download ACTPLAS evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf .actplas-download
+          mkdir -p .actplas-download
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --dir .actplas-download || true
+          find .actplas-download -maxdepth 4 -type f -print | sort
+
+      - name: Publish stable latest-run summary
+        run: |
+          set -euo pipefail
+          mkdir -p actplas/latest
+          {
+            printf 'run_id=%s\n' "$RUN_ID"
+            printf 'workflow_head_sha=%s\n' "$HEAD_SHA"
+            printf 'conclusion=%s\n' "$CONCLUSION"
+            printf 'observer_commit=%s\n' "$GITHUB_SHA"
+          } > actplas/latest/run.txt
+
+          find_first() {
+            find .actplas-download -type f -name "$1" -print -quit 2>/dev/null || true
+          }
+
+          for f in runtime.txt controls.tsv sm-r01.tsv provenance.txt generated-prj-summary.txt; do
+            src="$(find_first "$f")"
+            if [ -n "$src" ]; then
+              cp "$src" "actplas/latest/$f"
+            else
+              rm -f "actplas/latest/$f"
+            fi
+          done
+
+          rm -rf actplas/latest/generated-prj
+          mkdir -p actplas/latest/generated-prj
+          while IFS= read -r p; do
+            [ -n "$p" ] && cp "$p" actplas/latest/generated-prj/
+          done < <(find .actplas-download -type f -name '*.prj' -path '*generated-prj*' -print 2>/dev/null || true)
+
+      - name: Commit summary when changed
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add actplas/latest
+          if git diff --cached --quiet; then
+            echo 'No ACTPLAS summary change.'
+            exit 0
+          fi
+          git commit -m "ci: record ACTPLAS run ${RUN_ID} evidence"
+          git push
