@@ -76,7 +76,7 @@ jobs:
           test -n "${OGS_BIN}"
           OGS_BIN="$(readlink -f "${OGS_BIN}")"
           echo "OGS_BIN=${OGS_BIN}" >> "$GITHUB_ENV"
-          printf 'cache_hit=%s\nogs_binary=%s\n' "${{ steps.runtime_cache.outputs.cache-hit }}" "${OGS_BIN}" | tee actplas-evidence/runtime.txt
+          printf 'cache_hit=%s\nogs_binary=%s\n' "${{ steps.runtime_cache.outputs['cache-hit'] }}" "${OGS_BIN}" | tee actplas-evidence/runtime.txt
 
       - name: Run exact upstream SM controls directly
         working-directory: ogs-upstream
