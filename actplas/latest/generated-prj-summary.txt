@@ -1,0 +1,2 @@
+SM_MC_DEACT = exact upstream excavation with constitutive relation changed to MFront MohrCoulombAbboSloan; deactivation preserved
+SM_MC_NO_DEACT = identical project with deactivated_subdomains removed

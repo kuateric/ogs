@@ -1,0 +1,3 @@
+case	exit_code	success_marker	nonlinear_failure_marker
+SM_MC_NO_DEACT	0	no	no
+SM_MC_DEACT	1	no	yes
