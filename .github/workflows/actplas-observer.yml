@@ -2,7 +2,7 @@ name: OGS-ACTPLAS Observer
 
 on:
   workflow_run:
-    workflows: ["OGS-ACTPLAS-K0"]
+    workflows: ["OGS-ACTPLAS-R01"]
     types: [completed]
   push:
     branches: [master]
