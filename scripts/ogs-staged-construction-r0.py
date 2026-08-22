@@ -66,6 +66,65 @@ inline DomainTransition determineDomainTransition(
 }  // namespace ProcessLib::StagedConstruction
 ''', encoding="utf-8")
 
+removal_header = root / "ProcessLib/StagedConstruction/MechanicalRemovalTransition.h"
+removal_header.write_text(r'''// SPDX-FileCopyrightText: Copyright (c) OpenGeoSys Community (opengeosys.org)
+// SPDX-License-Identifier: BSD-3-Clause
+
+#pragma once
+
+#include <cstddef>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+namespace ProcessLib::StagedConstruction
+{
+/// Stores the mechanical nodal action that disappeared when elements were
+/// removed from the active assembly.  lambda is a construction continuation
+/// coordinate, not physical time: lambda=0 retains the full pre-removal action,
+/// lambda=1 releases it completely.
+class MechanicalRemovalTransition
+{
+public:
+    MechanicalRemovalTransition(std::vector<std::size_t> dof_ids,
+                                std::vector<double> retained_force)
+        : _dof_ids(std::move(dof_ids)),
+          _retained_force(std::move(retained_force))
+    {
+        if (_dof_ids.size() != _retained_force.size())
+        {
+            throw std::invalid_argument(
+                "Mechanical removal DOF and force vectors must have equal size.");
+        }
+    }
+
+    std::vector<std::size_t> const& dofIDs() const { return _dof_ids; }
+    std::vector<double> const& retainedForce() const { return _retained_force; }
+
+    std::vector<double> forceAt(double const lambda) const
+    {
+        if (lambda < 0.0 || lambda > 1.0)
+        {
+            throw std::out_of_range(
+                "Mechanical removal release coordinate must be in [0, 1].");
+        }
+
+        double const scale = 1.0 - lambda;
+        auto force = _retained_force;
+        for (double& value : force)
+        {
+            value *= scale;
+        }
+        return force;
+    }
+
+private:
+    std::vector<std::size_t> _dof_ids;
+    std::vector<double> _retained_force;
+};
+}  // namespace ProcessLib::StagedConstruction
+''', encoding="utf-8")
+
 cmake = root / "ProcessLib/CMakeLists.txt"
 text = cmake.read_text(encoding="utf-8")
 needle = "    Reflection\n    Graph\n)"
@@ -127,4 +186,4 @@ if pv.count(old_tail) != 1:
 pv = pv.replace(old_tail, new_tail)
 process_variable.write_text(pv, encoding="utf-8")
 
-print("Applied OGS Staged Construction R1 lifecycle/deactivation integration patch")
+print("Applied OGS Staged Construction R2A lifecycle and mechanical release contract patch")
