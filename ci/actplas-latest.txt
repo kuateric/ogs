@@ -1,0 +1,6 @@
+workflow=OGS-ACTPLAS-R06
+run_id=32554040666
+run_attempt=1
+wrapper_sha=9a039ea5cd0c9a05725340ae4a36bcd13367982b
+ogs_upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
+job_status=success
