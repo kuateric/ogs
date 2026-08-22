@@ -10,6 +10,8 @@ bash ci/actplas-r15.sh
 cd ogs-upstream
 python3 - <<'PY'
 from pathlib import Path
+import base64
+import struct
 import xml.etree.ElementTree as ET
 
 mesh = Path('Tests/Data/Mechanics/Excavation/A2.vtu')
@@ -17,17 +19,54 @@ root = ET.parse(mesh).getroot()
 piece = root.find('.//Piece')
 assert piece is not None
 
+# A2.vtu uses VTK XML appended/base64 arrays with UInt64 block headers.
+# Decode the exact upstream representation instead of assuming inline ASCII.
+appended = root.find('.//AppendedData')
+assert appended is not None and appended.text
+encoded = ''.join(appended.text.split())
+assert encoded.startswith('_')
+raw = base64.b64decode(encoded[1:])
+byte_order = root.attrib.get('byte_order', 'LittleEndian')
+endian = '<' if byte_order == 'LittleEndian' else '>'
+header_type = root.attrib.get('header_type', 'UInt32')
+header_fmt = {'UInt32': 'I', 'UInt64': 'Q'}[header_type]
+header_size = struct.calcsize(endian + header_fmt)
+
+vtk_types = {
+    'Float64': 'd', 'Float32': 'f',
+    'Int64': 'q', 'UInt64': 'Q',
+    'Int32': 'i', 'UInt32': 'I',
+    'Int16': 'h', 'UInt16': 'H',
+    'Int8': 'b', 'UInt8': 'B',
+}
+
+def read_array(da):
+    assert da is not None
+    fmt = vtk_types[da.attrib['type']]
+    if da.attrib.get('format', 'ascii') == 'ascii':
+        assert da.text
+        conv = float if fmt in ('d', 'f') else int
+        return [conv(x) for x in da.text.split()]
+    assert da.attrib.get('format') == 'appended'
+    offset = int(da.attrib['offset'])
+    nbytes = struct.unpack_from(endian + header_fmt, raw, offset)[0]
+    start = offset + header_size
+    payload = raw[start:start+nbytes]
+    item_size = struct.calcsize(endian + fmt)
+    assert nbytes % item_size == 0
+    n = nbytes // item_size
+    return list(struct.unpack(endian + str(n) + fmt, payload))
+
 pts_da = piece.find('./Points/DataArray')
-assert pts_da is not None and pts_da.text
-vals = [float(x) for x in pts_da.text.split()]
+vals = [float(x) for x in read_array(pts_da)]
 assert len(vals) % 3 == 0
 points = [tuple(vals[i:i+3]) for i in range(0, len(vals), 3)]
 
 cells = piece.find('./Cells')
 assert cells is not None
 arrays = {a.attrib.get('Name'): a for a in cells.findall('./DataArray')}
-conn = [int(x) for x in arrays['connectivity'].text.split()]
-offs = [int(x) for x in arrays['offsets'].text.split()]
+conn = [int(x) for x in read_array(arrays['connectivity'])]
+offs = [int(x) for x in read_array(arrays['offsets'])]
 
 cell_nodes = []
 start = 0
@@ -54,8 +93,8 @@ for a in cell_data.findall('./DataArray'):
     if a.attrib.get('Name') in ('MaterialIDs', 'MaterialID', 'material_id'):
         material_da = a
         break
-assert material_da is not None and material_da.text
-material_ids = [int(float(x)) for x in material_da.text.split()]
+assert material_da is not None
+material_ids = [int(x) for x in read_array(material_da)]
 assert len(material_ids) == len(cell_nodes)
 
 centroids = [centroid(ids) for ids in cell_nodes]
@@ -101,7 +140,7 @@ cat > actplas-evidence/r16-conclusion.txt <<'EOF'
 R16 TOPOLOGY DIAGNOSTIC
 R15 proves PRE x=0.2749 passes while EXACT x=0.2750 and POST x=0.2751 fail.
 R14 proves the first constitutive failure is in element 490 at xyz=[0.261010,0.266206,0], Newton iteration 2, with MGIS rdt=0.1.
-R16 now filters the topology calculation by the actual deactivation material id (0), avoiding the previous harness-only assertion defect, and records the material-0 cells crossing the exact x=0.275 center-of-gravity threshold plus their node adjacency to element 490.
+R16 filters the topology calculation by the actual deactivation material id (0) and decodes the upstream A2.vtu appended/base64 arrays according to its VTK XML metadata. It records the material-0 cells crossing the exact x=0.275 center-of-gravity threshold plus their node adjacency to element 490.
 No OGS production mechanics are changed.
 EOF
 printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" "${GITHUB_SHA:-unknown}" > actplas-evidence/provenance.txt
