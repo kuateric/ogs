@@ -59,8 +59,12 @@
                     <t_end>8</t_end>
                     <timesteps>
                         <pair>
-                            <repeat>2</repeat>
+                            <repeat>1</repeat>
                             <delta_t>0.5</delta_t>
+                        </pair>
+                        <pair>
+                            <repeat>50</repeat>
+                            <delta_t>0.01</delta_t>
                         </pair>
                         <pair>
                             <repeat>35</repeat>
@@ -135,7 +139,7 @@
             <values>-9.6e6</values>
         </parameter>
         <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-        <parameter><name>MC_Cohesion</name><type>Constant</type><value>50e6</value></parameter>
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>10e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
         <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>

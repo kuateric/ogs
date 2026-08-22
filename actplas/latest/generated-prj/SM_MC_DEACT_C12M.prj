@@ -135,7 +135,7 @@
             <values>-9.6e6</values>
         </parameter>
         <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-        <parameter><name>MC_Cohesion</name><type>Constant</type><value>5e6</value></parameter>
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>12e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
         <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
@@ -155,6 +155,23 @@
             <components>2</components>
             <order>1</order>
             <initial_condition>displacement0</initial_condition>
+            <deactivated_subdomains>
+                <deactivated_subdomain>
+                    <time_interval>
+                        <start>0.51 </start>
+                        <end> 1.0 </end>
+                    </time_interval>
+                    <material_ids>0</material_ids>
+                </deactivated_subdomain>
+                <deactivated_subdomain>
+                    <time_curve>excavation_curve</time_curve>
+                    <line_segment>
+                        <start>0 0 0</start>
+                        <end>2.5 0 0</end>
+                    </line_segment>
+                    <material_ids>0</material_ids>
+                </deactivated_subdomain>
+            </deactivated_subdomains>
             <boundary_conditions>
                 <boundary_condition>
                     <mesh>A2_0</mesh> <!-- bottom tunnel -->

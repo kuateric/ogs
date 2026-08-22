@@ -1,2 +1,2 @@
-SM_MC_NO_DEACT_C5M = exact upstream excavation with MFront MohrCoulombAbboSloan and deactivated_subdomains removed; this is only a runtime/material-load control, not a matched excavation stress path.
-SM_MC_DEACT cohesion sweep = exact same upstream excavation/deactivation path and identical MC parameters except cohesion. High cohesion is intended as the near-elastic deactivation control; decreasing cohesion probes onset of plasticity-related failure.
+R02 fine cohesion sweep preserves exact upstream excavation geometry, boundary conditions, initial stress, deactivation definition, solver, and all Mohr-Coulomb parameters except cohesion.
+R02 timestep probes preserve C=10 MPa and the exact deactivation definition; only fixed time-step sampling between t=0.5 and t=1.0 changes. This tests whether smaller global dt can regularize the local MFront failure or simply moves it to the first sampled deactivation time.

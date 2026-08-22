@@ -1,9 +1,0 @@
-case	cohesion	exit_code	completed	mfront_integration_failure	first_failed_time
-SM_MC_NO_DEACT	5e6	0	yes	no	-
-SM_MC_DEACT_C100M	100e6	0	yes	no	-
-SM_MC_DEACT_C50M	50e6	0	yes	no	-
-SM_MC_DEACT_C20M	20e6	0	yes	no	-
-SM_MC_DEACT_C10M	10e6	1	no	yes	1
-SM_MC_DEACT_C5M	5e6	1	no	yes	1
-SM_MC_DEACT_C2M	2e6	1	no	yes	1
-SM_MC_DEACT_C1M	1e6	1	no	yes	1

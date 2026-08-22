@@ -135,7 +135,7 @@
             <values>-9.6e6</values>
         </parameter>
         <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-        <parameter><name>MC_Cohesion</name><type>Constant</type><value>2e6</value></parameter>
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>16e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
         <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
