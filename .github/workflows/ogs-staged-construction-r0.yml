@@ -6,10 +6,12 @@ on:
     paths:
       - '.github/workflows/ogs-staged-construction-r0.yml'
       - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2b.py'
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-r0.yml'
       - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2b.py'
   workflow_dispatch:
 
 permissions:
@@ -41,13 +43,16 @@ jobs:
         run: |
           set -euxo pipefail
           cp scripts/ogs-staged-construction-r0.py ogs-upstream/
+          cp scripts/ogs-staged-construction-r2b.py ogs-upstream/
           cd ogs-upstream
           python3 ogs-staged-construction-r0.py
+          python3 ogs-staged-construction-r2b.py
           test -f ProcessLib/StagedConstruction/DomainLifecycle.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalTransition.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h
           grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
           git diff --check
-          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/ProcessVariable.cpp
+          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/ProcessVariable.cpp
 
       - name: Compile lifecycle and removal contracts smoke test
         working-directory: ogs-upstream
@@ -56,12 +61,14 @@ jobs:
           cat > /tmp/test_staged_construction.cpp <<'CPP'
           #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
           #include "ProcessLib/StagedConstruction/MechanicalRemovalTransition.h"
+          #include "ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h"
           #include <cassert>
           #include <cmath>
           #include <vector>
 
           int main()
           {
+              using ProcessLib::StagedConstruction::MechanicalRemovalForceCapture;
               using ProcessLib::StagedConstruction::MechanicalRemovalTransition;
               using ProcessLib::StagedConstruction::determineDomainTransition;
 
@@ -81,6 +88,19 @@ jobs:
               assert(std::abs(fhalf[0] - 5.0) < 1e-15);
               assert(std::abs(fhalf[1] + 3.0) < 1e-15);
               assert(std::abs(f1[0]) < 1e-15 && std::abs(f1[1]) < 1e-15);
+
+              // Two removed elements share interface DOFs 4 and 7. Internal
+              // removed-domain DOFs 1 and 9 must not leak into the retained load.
+              MechanicalRemovalForceCapture capture({7, 4});
+              capture.addElementResidual({1, 4, 7}, {100.0, 3.0, -2.0});
+              capture.addElementResidual({4, 7, 9}, {5.0, -4.0, 200.0});
+              auto const captured = capture.makeTransition();
+              assert((captured.dofIDs() == std::vector<std::size_t>{4, 7}));
+              assert(std::abs(captured.retainedForce()[0] - 8.0) < 1e-15);
+              assert(std::abs(captured.retainedForce()[1] + 6.0) < 1e-15);
+              auto const released = captured.forceAt(0.25);
+              assert(std::abs(released[0] - 6.0) < 1e-15);
+              assert(std::abs(released[1] + 4.5) < 1e-15);
               return 0;
           }
           CPP
@@ -122,12 +142,12 @@ jobs:
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           if [ -d ogs-upstream ]; then
-            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2a.diff || true
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2b.diff || true
           fi
 
       - name: Upload staged-construction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r2a-${{ github.sha }}
+          name: ogs-staged-construction-r2b-${{ github.sha }}
           path: staged-construction-evidence
