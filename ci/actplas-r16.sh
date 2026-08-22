@@ -20,12 +20,15 @@ piece = root.find('.//Piece')
 assert piece is not None
 
 # A2.vtu uses VTK XML appended/base64 arrays with UInt64 block headers.
-# Decode the exact upstream representation instead of assuming inline ASCII.
+# For base64 AppendedData, VTK's DataArray offsets index the encoded character
+# stream (after the leading underscore), not the fully decoded byte stream.
+# Each appended block is independently base64 encoded; decode the block bounded
+# by the next DataArray offset so padding in one block cannot truncate another.
 appended = root.find('.//AppendedData')
 assert appended is not None and appended.text
 encoded = ''.join(appended.text.split())
 assert encoded.startswith('_')
-raw = base64.b64decode(encoded[1:])
+encoded_body = encoded[1:]
 byte_order = root.attrib.get('byte_order', 'LittleEndian')
 endian = '<' if byte_order == 'LittleEndian' else '>'
 header_type = root.attrib.get('header_type', 'UInt32')
@@ -40,6 +43,16 @@ vtk_types = {
     'Int8': 'b', 'UInt8': 'B',
 }
 
+appended_arrays = [
+    da for da in piece.findall('.//DataArray')
+    if da.attrib.get('format') == 'appended'
+]
+offsets = sorted(int(da.attrib['offset']) for da in appended_arrays)
+next_offset = {
+    off: (offsets[i + 1] if i + 1 < len(offsets) else len(encoded_body))
+    for i, off in enumerate(offsets)
+}
+
 def read_array(da):
     assert da is not None
     fmt = vtk_types[da.attrib['type']]
@@ -49,9 +62,15 @@ def read_array(da):
         return [conv(x) for x in da.text.split()]
     assert da.attrib.get('format') == 'appended'
     offset = int(da.attrib['offset'])
-    nbytes = struct.unpack_from(endian + header_fmt, raw, offset)[0]
-    start = offset + header_size
-    payload = raw[start:start+nbytes]
+    block_b64 = encoded_body[offset:next_offset[offset]]
+    block = base64.b64decode(block_b64)
+    assert len(block) >= header_size
+    nbytes = struct.unpack_from(endian + header_fmt, block, 0)[0]
+    payload = block[header_size:header_size+nbytes]
+    assert len(payload) == nbytes, (
+        f"VTK appended block truncated at encoded offset {offset}: "
+        f"expected {nbytes} payload bytes, got {len(payload)}"
+    )
     item_size = struct.calcsize(endian + fmt)
     assert nbytes % item_size == 0
     n = nbytes // item_size
@@ -82,10 +101,7 @@ def bounds(ids):
     xs=[points[j][0] for j in ids]; ys=[points[j][1] for j in ids]
     return min(xs),max(xs),min(ys),max(ys)
 
-# Deactivation in the upstream project applies only to material id 0.  R16's
-# original topology diagnostic accidentally bracketed every cell in the mesh,
-# including surrounding rock, which made its hard-coded assertion a harness
-# error rather than a mechanics finding.
+# Deactivation in the upstream project applies only to material id 0.
 cell_data = piece.find('./CellData')
 assert cell_data is not None
 material_da = None
@@ -140,7 +156,7 @@ cat > actplas-evidence/r16-conclusion.txt <<'EOF'
 R16 TOPOLOGY DIAGNOSTIC
 R15 proves PRE x=0.2749 passes while EXACT x=0.2750 and POST x=0.2751 fail.
 R14 proves the first constitutive failure is in element 490 at xyz=[0.261010,0.266206,0], Newton iteration 2, with MGIS rdt=0.1.
-R16 filters the topology calculation by the actual deactivation material id (0) and decodes the upstream A2.vtu appended/base64 arrays according to its VTK XML metadata. It records the material-0 cells crossing the exact x=0.275 center-of-gravity threshold plus their node adjacency to element 490.
+R16 filters the topology calculation by the actual deactivation material id (0) and decodes the upstream A2.vtu appended/base64 blocks according to VTK's encoded-stream offset semantics. It records the material-0 cells crossing the exact x=0.275 center-of-gravity threshold plus their node adjacency to element 490.
 No OGS production mechanics are changed.
 EOF
 printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" "${GITHUB_SHA:-unknown}" > actplas-evidence/provenance.txt
