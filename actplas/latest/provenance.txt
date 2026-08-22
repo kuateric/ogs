@@ -1,3 +1,0 @@
-ogs_upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
-ogs_checkout_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
-workflow_sha=66ed01e7576c3e31dd26033c9857db54df79e8dd
