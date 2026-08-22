@@ -59,12 +59,8 @@
                     <t_end>8</t_end>
                     <timesteps>
                         <pair>
-                            <repeat>2</repeat>
-                            <delta_t>0.5</delta_t>
-                        </pair>
-                        <pair>
-                            <repeat>35</repeat>
-                            <delta_t>0.2</delta_t>
+                            <repeat>160</repeat>
+                            <delta_t>0.05</delta_t>
                         </pair>
                     </timesteps>
                 </time_stepping>
@@ -135,7 +131,7 @@
             <values>-9.6e6</values>
         </parameter>
         <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-        <parameter><name>MC_Cohesion</name><type>Constant</type><value>13.25e6</value></parameter>
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>10e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
         <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
@@ -143,10 +139,9 @@
     </parameters>
     <curves>
         <curve>
-            <!-- back-filling half of the tunnel -->
             <name>excavation_curve</name>
-            <coords>1 2 8</coords>
-            <values>2.5 2 1.251</values>
+            <coords>0 1 8</coords>
+            <values>0 2.0 2.0</values>
         </curve>
     </curves>
     <process_variables>
@@ -156,13 +151,6 @@
             <order>1</order>
             <initial_condition>displacement0</initial_condition>
             <deactivated_subdomains>
-                <deactivated_subdomain>
-                    <time_interval>
-                        <start>0.51 </start>
-                        <end> 1.0 </end>
-                    </time_interval>
-                    <material_ids>0</material_ids>
-                </deactivated_subdomain>
                 <deactivated_subdomain>
                     <time_curve>excavation_curve</time_curve>
                     <line_segment>

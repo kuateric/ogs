@@ -59,12 +59,8 @@
                     <t_end>8</t_end>
                     <timesteps>
                         <pair>
-                            <repeat>2</repeat>
-                            <delta_t>0.5</delta_t>
-                        </pair>
-                        <pair>
-                            <repeat>35</repeat>
-                            <delta_t>0.2</delta_t>
+                            <repeat>160</repeat>
+                            <delta_t>0.05</delta_t>
                         </pair>
                     </timesteps>
                 </time_stepping>
@@ -143,10 +139,9 @@
     </parameters>
     <curves>
         <curve>
-            <!-- back-filling half of the tunnel -->
             <name>excavation_curve</name>
-            <coords>1 2 8</coords>
-            <values>2.5 2 1.251</values>
+            <coords>0 1 8</coords>
+            <values>0 1.5 1.5</values>
         </curve>
     </curves>
     <process_variables>
