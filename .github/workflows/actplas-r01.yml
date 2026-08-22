@@ -1,18 +1,18 @@
-name: OGS-ACTPLAS-R05
+name: OGS-ACTPLAS-R06
 
 on:
   push:
     branches: [master]
     paths:
       - '.github/workflows/actplas-r01.yml'
-      - 'ci/actplas-r05.sh'
+      - 'ci/actplas-r06.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  sm-r05:
+  sm-r06:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -36,13 +36,13 @@ jobs:
             .cpm-cache
           key: ogs-actplas-runtime-ubuntu24-adf770974c7ee0435702fe617634d03d17ab7cb8-sm-hm-trm-mfront-v1
 
-      - name: Run ACTPLAS R05
-        run: bash ci/actplas-r05.sh
+      - name: Run ACTPLAS R06
+        run: bash ci/actplas-r06.sh
 
-      - name: Upload ACTPLAS R05 evidence
+      - name: Upload ACTPLAS R06 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-actplas-r05-evidence
+          name: ogs-actplas-r06-evidence
           path: ogs-upstream/actplas-evidence/
           if-no-files-found: warn
