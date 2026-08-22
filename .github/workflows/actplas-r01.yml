@@ -1,10 +1,11 @@
-name: OGS-ACTPLAS-R16
+name: OGS-ACTPLAS-R17
 
 on:
   push:
     branches: [master]
     paths:
       - '.github/workflows/actplas-r01.yml'
+      - 'ci/actplas-r17.sh'
       - 'ci/actplas-r16.sh'
       - 'ci/actplas-r15.sh'
       - 'ci/actplas-r14.sh'
@@ -15,7 +16,7 @@ permissions:
   contents: write
 
 jobs:
-  sm-r16:
+  sm-r17:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -39,14 +40,14 @@ jobs:
             .cpm-cache
           key: ogs-actplas-runtime-ubuntu24-adf770974c7ee0435702fe617634d03d17ab7cb8-sm-hm-trm-mfront-v1
 
-      - name: Run ACTPLAS R16
-        run: bash ci/actplas-r16.sh
+      - name: Run ACTPLAS R17
+        run: bash ci/actplas-r17.sh
 
-      - name: Upload ACTPLAS R16 evidence
+      - name: Upload ACTPLAS R17 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-actplas-r16-evidence
+          name: ogs-actplas-r17-evidence
           path: ogs-upstream/actplas-evidence/
           if-no-files-found: warn
 
@@ -57,7 +58,7 @@ jobs:
         run: |
           mkdir -p ci
           cat > ci/actplas-latest.txt <<EOF
-          workflow=OGS-ACTPLAS-R16
+          workflow=OGS-ACTPLAS-R17
           run_id=${GITHUB_RUN_ID}
           run_attempt=${GITHUB_RUN_ATTEMPT}
           wrapper_sha=${GITHUB_SHA}
@@ -68,6 +69,6 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add ci/actplas-latest.txt
           if ! git diff --cached --quiet; then
-            git commit -m "ci: record ACTPLAS R16 run ${GITHUB_RUN_ID}"
+            git commit -m "ci: record ACTPLAS R17 run ${GITHUB_RUN_ID}"
             git push origin HEAD:master
           fi
