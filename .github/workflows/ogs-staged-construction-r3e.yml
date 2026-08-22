@@ -7,11 +7,13 @@ on:
       - '.github/workflows/ogs-staged-construction-r3e.yml'
       - 'scripts/ogs-staged-construction-r3e.py'
       - 'scripts/ogs-staged-construction-r3f.py'
+      - 'scripts/ogs-staged-construction-r3g.py'
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-r3e.yml'
       - 'scripts/ogs-staged-construction-r3e.py'
       - 'scripts/ogs-staged-construction-r3f.py'
+      - 'scripts/ogs-staged-construction-r3g.py'
   workflow_dispatch:
 
 permissions:
@@ -37,12 +39,12 @@ jobs:
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 
-      - name: Apply R0 through R3F
+      - name: Apply R0 through R3G
         run: |
           set -euxo pipefail
-          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
           cd ogs-upstream
-          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f; do python3 "ogs-staged-construction-${s}.py"; done
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g; do python3 "ogs-staged-construction-${s}.py"; done
           grep -q 'commitConstructionSubstepState' ProcessLib/Process.h
           grep -q 'material_state.pushBackState' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
           grep -q 'prev_states_\[ip\] = current_states_\[ip\]' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
@@ -52,6 +54,7 @@ jobs:
           grep -q 'snapshot_solution' ProcessLib/StagedConstruction/ConstructionTimeLoopDriver.h
           grep -q 'restore_solution' ProcessLib/StagedConstruction/ConstructionTimeLoopDriver.h
           grep -q 'solve_nonlinear_trial' ProcessLib/StagedConstruction/ConstructionTimeLoopDriver.h
+          grep -q 'StagedConstruction/ConstructionTimeLoopDriver.h' ProcessLib/TimeLoop.cpp
           git diff --check
 
       - name: Install build prerequisites
@@ -89,17 +92,17 @@ jobs:
           "$OGS_BIN" -o staged-r3e-out Tests/Data/Mechanics/Excavation/time_linear_excavation.prj > staged-r3e.log 2>&1
           grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r3e.log
 
-      - name: Freeze R3E/R3F evidence
+      - name: Freeze R3E/R3F/R3G evidence
         if: always()
         run: |
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           cp ogs-upstream/staged-r3e.log staged-construction-evidence/ 2>/dev/null || true
-          (cd ogs-upstream && git diff -- ProcessLib/Process.h ProcessLib/SmallDeformation/LocalAssemblerInterface.h ProcessLib/SmallDeformation/SmallDeformationProcess.h ProcessLib/StagedConstruction) > staged-construction-evidence/r3e-r3f.diff || true
+          (cd ogs-upstream && git diff -- ProcessLib/Process.h ProcessLib/TimeLoop.cpp ProcessLib/SmallDeformation/LocalAssemblerInterface.h ProcessLib/SmallDeformation/SmallDeformationProcess.h ProcessLib/StagedConstruction) > staged-construction-evidence/r3e-r3g.diff || true
 
-      - name: Upload R3E/R3F evidence
+      - name: Upload R3E/R3F/R3G evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r3e-r3f-${{ github.sha }}
+          name: ogs-staged-construction-r3e-r3g-${{ github.sha }}
           path: staged-construction-evidence
