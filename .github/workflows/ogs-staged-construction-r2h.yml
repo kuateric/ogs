@@ -1,0 +1,86 @@
+name: OGS-STAGED-CONSTRUCTION-R2H
+
+on:
+  push:
+    branches: [agent/ogs-staged-construction-r0]
+    paths:
+      - '.github/workflows/ogs-staged-construction-r2h.yml'
+      - 'scripts/ogs-staged-construction-r2h.py'
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-r2h.yml'
+      - 'scripts/ogs-staged-construction-r2h.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-residual-observer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+
+      - name: Apply R0 through R2H
+        run: |
+          set -euxo pipefail
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          cd ogs-upstream
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h; do python3 "ogs-staged-construction-${s}.py"; done
+          grep -q 'LocalResidualObserver' ProcessLib/VectorMatrixAssembler.h
+          grep -q '_local_residual_observer(mesh_item_id, _local_b_data)' ProcessLib/VectorMatrixAssembler.cpp
+          grep -q 'setLocalResidualObserver' ProcessLib/Process.h
+          git diff --check
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+
+      - name: Configure canonical OGS
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
+
+      - name: Build ProcessLib and SmallDeformation
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --target ProcessLib SmallDeformation --parallel 2
+
+      - name: Freeze R2H evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          (cd ogs-upstream && git diff -- ProcessLib/VectorMatrixAssembler.h ProcessLib/VectorMatrixAssembler.cpp ProcessLib/Process.h ProcessLib/StagedConstruction ProcessLib/ProcessVariable.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2h.diff || true
+
+      - name: Upload R2H evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-r2h-${{ github.sha }}
+          path: staged-construction-evidence

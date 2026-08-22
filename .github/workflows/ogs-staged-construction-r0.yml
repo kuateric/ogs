@@ -1,0 +1,167 @@
+name: OGS-STAGED-CONSTRUCTION-R0
+
+on:
+  push:
+    branches: [agent/ogs-staged-construction-r0]
+    paths:
+      - '.github/workflows/ogs-staged-construction-r0.yml'
+      - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2b.py'
+      - 'scripts/ogs-staged-construction-r2c.py'
+      - 'scripts/ogs-staged-construction-r2d.py'
+      - 'scripts/ogs-staged-construction-r2e.py'
+      - 'scripts/ogs-staged-construction-r2f.py'
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-r0.yml'
+      - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2b.py'
+      - 'scripts/ogs-staged-construction-r2c.py'
+      - 'scripts/ogs-staged-construction-r2d.py'
+      - 'scripts/ogs-staged-construction-r2e.py'
+      - 'scripts/ogs-staged-construction-r2f.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - name: Checkout implementation harness
+        uses: actions/checkout@v4
+
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "${OGS_UPSTREAM_URL}" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "${OGS_UPSTREAM_SHA}"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "${OGS_UPSTREAM_SHA}"
+
+      - name: Apply staged-construction lifecycle integration
+        run: |
+          set -euxo pipefail
+          for s in r0 r2b r2c r2d r2e r2f; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          cd ogs-upstream
+          python3 ogs-staged-construction-r0.py
+          python3 ogs-staged-construction-r2b.py
+          python3 ogs-staged-construction-r2c.py
+          python3 ogs-staged-construction-r2d.py
+          python3 ogs-staged-construction-r2e.py
+          python3 ogs-staged-construction-r2f.py
+          test -f ProcessLib/StagedConstruction/DomainLifecycle.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalTransition.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalInterface.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h
+          grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
+          grep -q 'NumLib::getIndices' ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h
+          git diff --check
+
+      - name: Compile lifecycle and removal contracts smoke test
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cat > /tmp/test_staged_construction.cpp <<'CPP'
+          #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
+          #include "ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h"
+          #include <cassert>
+          #include <cmath>
+          #include <unordered_map>
+          #include <vector>
+
+          int main()
+          {
+              using namespace ProcessLib::StagedConstruction;
+              std::vector<unsigned char> previous{1, 1, 0, 1};
+              std::vector<unsigned char> current{1, 0, 1, 0};
+              auto const t = determineDomainTransition(previous, current);
+              assert((t.active_element_ids == std::vector<std::size_t>{0, 2}));
+              assert((t.newly_deactivated_element_ids == std::vector<std::size_t>{1, 3}));
+
+              std::unordered_map<std::size_t, MechanicalRemovalElementContribution> contributions{
+                  {1, {{1, 4, 7}, {100.0, 3.0, -2.0}}},
+                  {3, {{4, 7, 9}, {5.0, -4.0, 200.0}}}};
+              auto const built = buildMechanicalRemovalFromDomainTransition(
+                  t, contributions, {{0, 4, 8}, {2, 7, 10}});
+              assert((built.dofIDs() == std::vector<std::size_t>{4, 7}));
+              assert(std::abs(built.retainedForce()[0] - 8.0) < 1e-15);
+              assert(std::abs(built.retainedForce()[1] + 6.0) < 1e-15);
+              auto const half = built.forceAt(0.5);
+              assert(std::abs(half[0] - 4.0) < 1e-15);
+              assert(std::abs(half[1] + 3.0) < 1e-15);
+
+              bool missing_threw = false;
+              try
+              {
+                  std::unordered_map<std::size_t, MechanicalRemovalElementContribution> missing{
+                      {1, {{1, 4, 7}, {100.0, 3.0, -2.0}}}};
+                  (void)buildMechanicalRemovalFromDomainTransition(
+                      t, missing, {{0, 4, 8}, {2, 7, 10}});
+              }
+              catch (std::invalid_argument const&)
+              {
+                  missing_threw = true;
+              }
+              assert(missing_threw);
+              return 0;
+          }
+          CPP
+          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp -o /tmp/test_staged_construction
+          /tmp/test_staged_construction
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+
+      - name: Configure canonical OGS
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --preset release \
+            -DOGS_BUILD_GUI=OFF \
+            -DOGS_BUILD_UTILS=OFF \
+            -DOGS_BUILD_TESTING=ON \
+            '-DOGS_BUILD_PROCESSES=SmallDeformation'
+
+      - name: Build ProcessLib and SmallDeformation
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --target ProcessLib SmallDeformation --parallel 2
+
+      - name: Freeze staged-construction evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          if [ -d ogs-upstream ]; then
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2f.diff || true
+          fi
+
+      - name: Upload staged-construction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-r2f-${{ github.sha }}
+          path: staged-construction-evidence
