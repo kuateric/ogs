@@ -54,44 +54,81 @@ new = '''            <constitutive_relation id="0,1">
                 </material_properties>
             </constitutive_relation>'''
 params = '''        <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-        <parameter><name>MC_Cohesion</name><type>Constant</type><value>{}</value></parameter>
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>10e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
         <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
         <parameter><name>MC_TensionCutOff</name><type>Constant</type><value>1e6</value></parameter>
 '''
 
-def build(name, cohesion, gradual_only=False):
+def build(name, endpoint, dt):
     dst = cases/name
     shutil.copytree(src, dst, dirs_exist_ok=True)
-    p=dst/'time_linear_excavation.prj'
-    text=p.read_text(encoding='latin-1')
-    assert text.count(old)==1
-    text=text.replace(old,new)
-    marker='            <specific_body_force>0 0</specific_body_force>'
-    assert text.count(marker)==1
-    text=text.replace(marker, marker+'\n            <reference_temperature>T_ref</reference_temperature>')
-    text=text.replace('    </parameters>', params.format(cohesion)+'    </parameters>')
-    if gradual_only:
-        # Remove only the first abrupt full-material deactivation interval.
-        pat=r'''\s*<deactivated_subdomain>\s*<time_interval>\s*<start>0\.51\s*</start>\s*<end>\s*1\.0\s*</end>\s*</time_interval>\s*<material_ids>0</material_ids>\s*</deactivated_subdomain>'''
-        text,n=re.subn(pat,'',text,flags=re.S)
-        if n!=1:
-            raise RuntimeError(f'expected one abrupt block, removed={n}')
-    p.write_text(text,encoding='latin-1')
+    p = dst/'time_linear_excavation.prj'
+    text = p.read_text(encoding='latin-1')
+    assert text.count(old) == 1
+    text = text.replace(old, new)
+    marker = '            <specific_body_force>0 0</specific_body_force>'
+    assert text.count(marker) == 1
+    text = text.replace(marker, marker+'\n            <reference_temperature>T_ref</reference_temperature>')
+    text = text.replace('    </parameters>', params+'    </parameters>')
 
-for tag,val in [('14000','14e6'),('13750','13.75e6'),('13500','13.5e6'),('13250','13.25e6'),('13000','13e6'),('12750','12.75e6'),('12500','12.5e6'),('12000','12e6')]:
-    build('SM_MC_DEACT_C'+tag+'K', val)
-build('SM_MC_DEACT_C10M_GRADUAL_ONLY','10e6',gradual_only=True)
+    # Replace both upstream deactivation definitions by one truly progressive
+    # spatial front. At t=0 the front is at x=0 (no element centres behind it),
+    # it advances linearly to endpoint by t=1, and then stays there until t=8.
+    ds = '''            <deactivated_subdomains>
+                <deactivated_subdomain>
+                    <time_curve>excavation_curve</time_curve>
+                    <line_segment>
+                        <start>0 0 0</start>
+                        <end>2.5 0 0</end>
+                    </line_segment>
+                    <material_ids>0</material_ids>
+                </deactivated_subdomain>
+            </deactivated_subdomains>'''
+    text, n = re.subn(r'            <deactivated_subdomains>.*?            </deactivated_subdomains>', ds, text, flags=re.S)
+    if n != 1:
+        raise RuntimeError(f'deactivated_subdomains replacement count={n}')
+
+    text, n = re.subn(
+        r'<curve>\s*<!-- back-filling half of the tunnel -->\s*<name>excavation_curve</name>.*?</curve>',
+        f'''<curve>
+            <name>excavation_curve</name>
+            <coords>0 1 8</coords>
+            <values>0 {endpoint} {endpoint}</values>
+        </curve>''', text, flags=re.S)
+    if n != 1:
+        raise RuntimeError(f'excavation_curve replacement count={n}')
+
+    # Uniform pseudo-time stepping so decreasing dt also decreases the spatial
+    # amount removed per accepted step. Keep t_end=8 and every other solver
+    # setting unchanged.
+    repeat = int(round(8.0/dt))
+    ts = f'''                    <timesteps>
+                        <pair>
+                            <repeat>{repeat}</repeat>
+                            <delta_t>{dt}</delta_t>
+                        </pair>
+                    </timesteps>'''
+    text, n = re.subn(r'                    <timesteps>.*?                    </timesteps>', ts, text, flags=re.S)
+    if n != 1:
+        raise RuntimeError(f'timesteps replacement count={n}')
+    p.write_text(text, encoding='latin-1')
+
+for endpoint in (0.5, 1.0, 1.5, 2.0, 2.5):
+    tag = str(endpoint).replace('.', 'p')
+    build(f'SM_MC_C10M_PROGRESS_END_{tag}_DT005', endpoint, 0.05)
+for dt in (0.1, 0.02):
+    tag = str(dt).replace('.', 'p')
+    build(f'SM_MC_C10M_PROGRESS_END_2p5_DT_{tag}', 2.5, dt)
 
 (root/'actplas-evidence'/'generated-prj-summary.txt').write_text(
-'R03 refines the R02 cohesion transition between 12 and 14 MPa without changing geometry, solver, initial stress, or deactivation definition.\n'
-'R03_GRADUAL_ONLY keeps C=10 MPa and the upstream time_curve/line_segment deactivation but removes only the abrupt full-material time_interval block active after t=0.51. This isolates whether the constitutive integration failure is driven by the discontinuous bulk element removal.\n', encoding='utf-8')
+'R04 corrects the R03 gradual-only interpretation. The upstream excavation_curve starts at t=1 with position 2.5, so it still causes a discontinuous full spatial removal at curve activation. R04 replaces both upstream deactivation blocks with one curve supported from t=0 to 8: position 0 at t=0, linear advance to a selected endpoint at t=1, then constant. Uniform time stepping makes dt directly control the excavation-front increment. All R04 cases keep C=10 MPa, geometry, initial stress, constitutive law, Newton solver and boundary conditions fixed.\n', encoding='utf-8')
 PY
 
-printf 'case\tcohesion\tdeactivation_mode\texit_code\tcompleted\tmfront_integration_failure\tfirst_failed_time\tlast_nonlinear_iteration\n' > actplas-evidence/sm-r03.tsv
+printf 'case\tendpoint\tdt\texit_code\tcompleted\tmfront_integration_failure\tfirst_failed_time\tlast_nonlinear_iteration\n' > actplas-evidence/sm-r04.tsv
 run_case() {
-  local name="$1" cohesion="$2" mode="$3" dir outdir log rc completed mf_fail fail_time last_iter
+  local name="$1" endpoint="$2" dt="$3" dir outdir log rc completed mf_fail fail_time last_iter
   dir="actplas-cases/$name"; outdir="$(pwd)/actplas-evidence/out_${name}"; log="$(pwd)/actplas-evidence/logs/${name}.log"
   mkdir -p "$outdir"
   set +e
@@ -102,17 +139,16 @@ run_case() {
   grep -q 'MFront: integration failed' "$log" && mf_fail=yes || mf_fail=no
   fail_time="$(grep -m1 -oE 'failed in time step #[0-9]+ at t = [^ ]+' "$log" | sed -E 's/.* at t = //' || true)"; [[ -n "$fail_time" ]] || fail_time='-'
   last_iter="$(grep 'Iteration #[0-9][0-9]* started' "$log" | tail -1 | sed -E 's/.*Iteration #([0-9]+).*/\1/' || true)"; [[ -n "$last_iter" ]] || last_iter='-'
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$cohesion" "$mode" "$rc" "$completed" "$mf_fail" "$fail_time" "$last_iter" | tee -a actplas-evidence/sm-r03.tsv
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$endpoint" "$dt" "$rc" "$completed" "$mf_fail" "$fail_time" "$last_iter" | tee -a actplas-evidence/sm-r04.tsv
 }
 
-for tag in 14000 13750 13500 13250 13000 12750 12500 12000; do
-  case "$tag" in
-    14000) c=14e6;; 13750) c=13.75e6;; 13500) c=13.5e6;; 13250) c=13.25e6;; 13000) c=13e6;; 12750) c=12.75e6;; 12500) c=12.5e6;; 12000) c=12e6;;
-  esac
-  run_case "SM_MC_DEACT_C${tag}K" "$c" abrupt_plus_curve
+for endpoint in 0.5 1.0 1.5 2.0 2.5; do
+  tag="${endpoint/./p}"
+  run_case "SM_MC_C10M_PROGRESS_END_${tag}_DT005" "$endpoint" 0.05
 done
-run_case SM_MC_DEACT_C10M_GRADUAL_ONLY 10e6 gradual_curve_only
+run_case SM_MC_C10M_PROGRESS_END_2p5_DT_0p1 2.5 0.1
+run_case SM_MC_C10M_PROGRESS_END_2p5_DT_0p02 2.5 0.02
 
 printf 'ogs_upstream_sha=%s\nogs_checkout_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$(git rev-parse HEAD)" "${GITHUB_SHA:-unknown}" > actplas-evidence/provenance.txt
 for p in actplas-cases/*/time_linear_excavation.prj; do cp "$p" "actplas-evidence/generated-prj/$(basename "$(dirname "$p")").prj"; done
-cat actplas-evidence/sm-r03.tsv
+cat actplas-evidence/sm-r04.tsv
