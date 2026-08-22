@@ -2,7 +2,7 @@ name: OGS-ACTPLAS Observer
 
 on:
   workflow_run:
-    workflows: ["OGS-ACTPLAS-R04"]
+    workflows: ["OGS-ACTPLAS-R05"]
     types: [completed]
   push:
     branches: [master]
@@ -66,7 +66,7 @@ jobs:
             find .actplas-download -type f -name "$1" -print -quit 2>/dev/null || true
           }
 
-          for f in runtime.txt controls.tsv sm-r01.tsv sm-r02.tsv sm-r03.tsv sm-r04.tsv provenance.txt generated-prj-summary.txt; do
+          for f in runtime.txt controls.tsv sm-r01.tsv sm-r02.tsv sm-r03.tsv sm-r04.tsv sm-r05.tsv provenance.txt generated-prj-summary.txt; do
             src="$(find_first "$f")"
             if [ -n "$src" ]; then
               cp "$src" "actplas/latest/$f"
