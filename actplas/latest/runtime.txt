@@ -1,2 +1,0 @@
-ogs_binary=/home/runner/work/ogs/ogs/build/release/bin/ogs
-runtime_cache_skip_build=yes
