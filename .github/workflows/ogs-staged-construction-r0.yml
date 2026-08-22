@@ -44,33 +44,48 @@ jobs:
           cd ogs-upstream
           python3 ogs-staged-construction-r0.py
           test -f ProcessLib/StagedConstruction/DomainLifecycle.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalTransition.h
           grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
           git diff --check
-          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/ProcessVariable.cpp
+          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/ProcessVariable.cpp
 
-      - name: Compile lifecycle contract smoke test
+      - name: Compile lifecycle and removal contracts smoke test
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
-          cat > /tmp/test_domain_lifecycle.cpp <<'CPP'
+          cat > /tmp/test_staged_construction.cpp <<'CPP'
           #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
+          #include "ProcessLib/StagedConstruction/MechanicalRemovalTransition.h"
           #include <cassert>
+          #include <cmath>
           #include <vector>
 
           int main()
           {
+              using ProcessLib::StagedConstruction::MechanicalRemovalTransition;
               using ProcessLib::StagedConstruction::determineDomainTransition;
+
               std::vector<unsigned char> previous{1, 1, 0, 1};
               std::vector<unsigned char> current{1, 0, 1, 0};
               auto const t = determineDomainTransition(previous, current);
               assert((t.active_element_ids == std::vector<std::size_t>{0, 2}));
               assert((t.newly_activated_element_ids == std::vector<std::size_t>{2}));
               assert((t.newly_deactivated_element_ids == std::vector<std::size_t>{1, 3}));
+
+              MechanicalRemovalTransition removal({4, 7}, {10.0, -6.0});
+              auto const f0 = removal.forceAt(0.0);
+              auto const fhalf = removal.forceAt(0.5);
+              auto const f1 = removal.forceAt(1.0);
+              assert(std::abs(f0[0] - 10.0) < 1e-15);
+              assert(std::abs(f0[1] + 6.0) < 1e-15);
+              assert(std::abs(fhalf[0] - 5.0) < 1e-15);
+              assert(std::abs(fhalf[1] + 3.0) < 1e-15);
+              assert(std::abs(f1[0]) < 1e-15 && std::abs(f1[1]) < 1e-15);
               return 0;
           }
           CPP
-          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_domain_lifecycle.cpp -o /tmp/test_domain_lifecycle
-          /tmp/test_domain_lifecycle
+          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp -o /tmp/test_staged_construction
+          /tmp/test_staged_construction
 
       - name: Install build prerequisites
         run: |
@@ -107,12 +122,12 @@ jobs:
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           if [ -d ogs-upstream ]; then
-            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r1.diff || true
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2a.diff || true
           fi
 
       - name: Upload staged-construction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r1-${{ github.sha }}
+          name: ogs-staged-construction-r2a-${{ github.sha }}
           path: staged-construction-evidence
