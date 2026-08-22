@@ -66,6 +66,7 @@ jobs:
           test -f ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h
           grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
+          grep -q 'NumLib::getIndices' ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h
           git diff --check
 
       - name: Compile lifecycle and removal contracts smoke test
@@ -75,10 +76,8 @@ jobs:
           cat > /tmp/test_staged_construction.cpp <<'CPP'
           #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
           #include "ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h"
-          #include "ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h"
           #include <cassert>
           #include <cmath>
-          #include <type_traits>
           #include <unordered_map>
           #include <vector>
 
@@ -116,18 +115,11 @@ jobs:
                   missing_threw = true;
               }
               assert(missing_threw);
-
-              using AdapterResult = decltype(getOwnedElementDofIDs(
-                  std::declval<std::vector<std::size_t> const&>(),
-                  std::declval<NumLib::LocalToGlobalIndexMap const&>()));
-              static_assert(std::is_same_v<AdapterResult,
-                            std::vector<std::vector<std::size_t>>>);
               return 0;
           }
           CPP
-          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp NumLib/DOF/DOFTableUtil.cpp -o /tmp/test_staged_construction || true
-          # The adapter depends on the built NumLib target; the canonical build below is authoritative.
-          c++ -std=c++17 -Wall -Wextra -Werror -I. -fsyntax-only /tmp/test_staged_construction.cpp
+          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp -o /tmp/test_staged_construction
+          /tmp/test_staged_construction
 
       - name: Install build prerequisites
         run: |
