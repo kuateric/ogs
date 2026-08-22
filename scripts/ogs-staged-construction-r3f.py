@@ -7,6 +7,7 @@ out.write_text(r'''#pragma once
 
 #include <cstddef>
 #include <functional>
+#include <utility>
 
 #include "BaseLib/Error.h"
 #include "ProcessLib/StagedConstruction/ConstructionSubstepDriver.h"
@@ -45,32 +46,22 @@ public:
 
     std::size_t run()
     {
-        std::size_t accepted = 0;
-        while (!driver_.isComplete())
-        {
-            callbacks_.snapshot_solution();
-            auto const lambda = driver_.beginTrial();
-            if (!lambda)
+        // Keep the TimeLoop-facing adapter deliberately thin. The actual
+        // transaction state machine is owned by ConstructionSubstepDriver so
+        // controller and retained-force state cannot diverge between two
+        // independently implemented continuation loops.
+        auto const result = driver_.runToCompletion(
+            [this]() { callbacks_.snapshot_solution(); },
+            [this](double const lambda)
+            { return callbacks_.solve_nonlinear_trial(lambda); },
+            [this]() { callbacks_.commit_process_state(); },
+            [this]()
             {
-                break;
-            }
-
-            if (callbacks_.solve_nonlinear_trial(*lambda))
-            {
-                // Constitutive state is committed only after a converged trial.
-                callbacks_.commit_process_state();
-                driver_.acceptTrial();
-                ++accepted;
-            }
-            else
-            {
-                // Restore both state domains before the controller cuts back.
                 callbacks_.restore_solution();
                 callbacks_.rollback_process_state();
-                driver_.rejectTrial();
-            }
-        }
-        return accepted;
+            });
+
+        return result.accepted_trials;
     }
 
 private:
