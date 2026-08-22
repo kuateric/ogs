@@ -8,12 +8,14 @@ on:
       - 'scripts/ogs-staged-construction-r0.py'
       - 'scripts/ogs-staged-construction-r2b.py'
       - 'scripts/ogs-staged-construction-r2c.py'
+      - 'scripts/ogs-staged-construction-r2d.py'
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-r0.yml'
       - 'scripts/ogs-staged-construction-r0.py'
       - 'scripts/ogs-staged-construction-r2b.py'
       - 'scripts/ogs-staged-construction-r2c.py'
+      - 'scripts/ogs-staged-construction-r2d.py'
   workflow_dispatch:
 
 permissions:
@@ -47,17 +49,20 @@ jobs:
           cp scripts/ogs-staged-construction-r0.py ogs-upstream/
           cp scripts/ogs-staged-construction-r2b.py ogs-upstream/
           cp scripts/ogs-staged-construction-r2c.py ogs-upstream/
+          cp scripts/ogs-staged-construction-r2d.py ogs-upstream/
           cd ogs-upstream
           python3 ogs-staged-construction-r0.py
           python3 ogs-staged-construction-r2b.py
           python3 ogs-staged-construction-r2c.py
+          python3 ogs-staged-construction-r2d.py
           test -f ProcessLib/StagedConstruction/DomainLifecycle.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalTransition.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalInterface.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h
           grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
           git diff --check
-          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/StagedConstruction/MechanicalRemovalInterface.h ProcessLib/ProcessVariable.cpp
+          git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/StagedConstruction/MechanicalRemovalInterface.h ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h ProcessLib/ProcessVariable.cpp
 
       - name: Compile lifecycle and removal contracts smoke test
         working-directory: ogs-upstream
@@ -68,14 +73,17 @@ jobs:
           #include "ProcessLib/StagedConstruction/MechanicalRemovalTransition.h"
           #include "ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h"
           #include "ProcessLib/StagedConstruction/MechanicalRemovalInterface.h"
+          #include "ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h"
           #include <cassert>
           #include <cmath>
           #include <vector>
 
           int main()
           {
+              using ProcessLib::StagedConstruction::MechanicalRemovalElementContribution;
               using ProcessLib::StagedConstruction::MechanicalRemovalForceCapture;
               using ProcessLib::StagedConstruction::MechanicalRemovalTransition;
+              using ProcessLib::StagedConstruction::buildMechanicalRemovalTransition;
               using ProcessLib::StagedConstruction::determineDomainTransition;
               using ProcessLib::StagedConstruction::determineMechanicalRemovalInterfaceDOFs;
 
@@ -110,6 +118,18 @@ jobs:
               auto const interface_dofs = determineMechanicalRemovalInterfaceDOFs(
                   {{1, 4, 7}, {4, 7, 9}}, {{0, 4, 8}, {2, 7, 10}});
               assert((interface_dofs == std::vector<std::size_t>{4, 7}));
+
+              std::vector<MechanicalRemovalElementContribution> removed{
+                  {{1, 4, 7}, {100.0, 3.0, -2.0}},
+                  {{4, 7, 9}, {5.0, -4.0, 200.0}}};
+              auto const built = buildMechanicalRemovalTransition(
+                  removed, {{0, 4, 8}, {2, 7, 10}});
+              assert((built.dofIDs() == std::vector<std::size_t>{4, 7}));
+              assert(std::abs(built.retainedForce()[0] - 8.0) < 1e-15);
+              assert(std::abs(built.retainedForce()[1] + 6.0) < 1e-15);
+              auto const built_half = built.forceAt(0.5);
+              assert(std::abs(built_half[0] - 4.0) < 1e-15);
+              assert(std::abs(built_half[1] + 3.0) < 1e-15);
               return 0;
           }
           CPP
@@ -151,12 +171,12 @@ jobs:
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           if [ -d ogs-upstream ]; then
-            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/StagedConstruction/MechanicalRemovalInterface.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2c.diff || true
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction/DomainLifecycle.h ProcessLib/StagedConstruction/MechanicalRemovalTransition.h ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h ProcessLib/StagedConstruction/MechanicalRemovalInterface.h ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2d.diff || true
           fi
 
       - name: Upload staged-construction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r2c-${{ github.sha }}
+          name: ogs-staged-construction-r2d-${{ github.sha }}
           path: staged-construction-evidence
