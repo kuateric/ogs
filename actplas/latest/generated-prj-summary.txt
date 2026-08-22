@@ -1,0 +1,1 @@
+R05 holds C=10 MPa and all mechanics fixed while refining the truly progressive excavation front. It varies endpoint and dt so the spatial front increment delta_x=endpoint*dt spans the R04 pass/fail interval. This tests whether failure is tied to a critical front position near x~1 or to removing too much material in one accepted step.

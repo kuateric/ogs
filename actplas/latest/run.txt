@@ -1,4 +1,4 @@
 run_id=32545900018
 workflow_head_sha=8ccb81b29899b9fb7af5183a9e98a024d698d8f1
-conclusion=
-observer_commit=bdc2ba8ae6c373ead01cb551b91031bd8c28d3c7
+conclusion=success
+observer_commit=fbfaf37ad0cbe196a71ea73bf740c22f0bcc807b
