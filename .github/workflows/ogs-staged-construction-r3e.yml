@@ -43,7 +43,8 @@ jobs:
           for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e; do python3 "ogs-staged-construction-${s}.py"; done
           grep -q 'commitConstructionSubstepState' ProcessLib/Process.h
           grep -q 'material_state.pushBackState' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
-          grep -q 'prev_states_ = current_states_' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
+          grep -q 'prev_states_\[ip\] = current_states_\[ip\]' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
+          grep -q 'commitConstructionSubstepState(std::size_t const' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
           grep -q 'rollbackConstructionSubstepState' ProcessLib/SmallDeformation/SmallDeformationProcess.h
           grep -q 'mgis::behaviour::update(_behaviour_data)' MaterialLib/SolidModels/MFront/MFrontGeneric.h
           git diff --check
