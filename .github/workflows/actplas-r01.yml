@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sm-r06:
@@ -46,3 +46,25 @@ jobs:
           name: ogs-actplas-r06-evidence
           path: ogs-upstream/actplas-evidence/
           if-no-files-found: warn
+
+      - name: Persist ACTPLAS run identity
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p ci
+          cat > ci/actplas-latest.txt <<EOF
+          workflow=OGS-ACTPLAS-R06
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          wrapper_sha=${GITHUB_SHA}
+          ogs_upstream_sha=${OGS_UPSTREAM_SHA}
+          job_status=${JOB_STATUS}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci/actplas-latest.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: record ACTPLAS R06 run ${GITHUB_RUN_ID}"
+            git push origin HEAD:master
+          fi
