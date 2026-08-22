@@ -86,7 +86,7 @@ jobs:
           test -n "$OGS_BIN"
           mkdir -p staged-r2k-out
           "$OGS_BIN" -o staged-r2k-out Tests/Data/Mechanics/Excavation/time_linear_excavation.prj > staged-r2k.log 2>&1
-          grep -Eqi 'simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r2k.log
+          grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r2k.log
 
       - name: Freeze R2K evidence
         if: always()
