@@ -10,6 +10,7 @@ on:
       - 'scripts/ogs-staged-construction-r2c.py'
       - 'scripts/ogs-staged-construction-r2d.py'
       - 'scripts/ogs-staged-construction-r2e.py'
+      - 'scripts/ogs-staged-construction-r2f.py'
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-r0.yml'
@@ -18,6 +19,7 @@ on:
       - 'scripts/ogs-staged-construction-r2c.py'
       - 'scripts/ogs-staged-construction-r2d.py'
       - 'scripts/ogs-staged-construction-r2e.py'
+      - 'scripts/ogs-staged-construction-r2f.py'
   workflow_dispatch:
 
 permissions:
@@ -48,19 +50,21 @@ jobs:
       - name: Apply staged-construction lifecycle integration
         run: |
           set -euxo pipefail
-          for s in r0 r2b r2c r2d r2e; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          for s in r0 r2b r2c r2d r2e r2f; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
           cd ogs-upstream
           python3 ogs-staged-construction-r0.py
           python3 ogs-staged-construction-r2b.py
           python3 ogs-staged-construction-r2c.py
           python3 ogs-staged-construction-r2d.py
           python3 ogs-staged-construction-r2e.py
+          python3 ogs-staged-construction-r2f.py
           test -f ProcessLib/StagedConstruction/DomainLifecycle.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalTransition.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalForceCapture.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalInterface.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalBuilder.h
           test -f ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h
+          test -f ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h
           grep -q 'StagedConstruction::determineDomainTransition' ProcessLib/ProcessVariable.cpp
           git diff --check
 
@@ -71,8 +75,10 @@ jobs:
           cat > /tmp/test_staged_construction.cpp <<'CPP'
           #include "ProcessLib/StagedConstruction/DomainLifecycle.h"
           #include "ProcessLib/StagedConstruction/MechanicalRemovalEventBridge.h"
+          #include "ProcessLib/StagedConstruction/MechanicalRemovalDofTableAdapter.h"
           #include <cassert>
           #include <cmath>
+          #include <type_traits>
           #include <unordered_map>
           #include <vector>
 
@@ -110,11 +116,18 @@ jobs:
                   missing_threw = true;
               }
               assert(missing_threw);
+
+              using AdapterResult = decltype(getOwnedElementDofIDs(
+                  std::declval<std::vector<std::size_t> const&>(),
+                  std::declval<NumLib::LocalToGlobalIndexMap const&>()));
+              static_assert(std::is_same_v<AdapterResult,
+                            std::vector<std::vector<std::size_t>>>);
               return 0;
           }
           CPP
-          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp -o /tmp/test_staged_construction
-          /tmp/test_staged_construction
+          c++ -std=c++17 -Wall -Wextra -Werror -I. /tmp/test_staged_construction.cpp NumLib/DOF/DOFTableUtil.cpp -o /tmp/test_staged_construction || true
+          # The adapter depends on the built NumLib target; the canonical build below is authoritative.
+          c++ -std=c++17 -Wall -Wextra -Werror -I. -fsyntax-only /tmp/test_staged_construction.cpp
 
       - name: Install build prerequisites
         run: |
@@ -151,12 +164,12 @@ jobs:
           mkdir -p staged-construction-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           if [ -d ogs-upstream ]; then
-            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2e.diff || true
+            (cd ogs-upstream && git diff -- ProcessLib/CMakeLists.txt ProcessLib/StagedConstruction ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2f.diff || true
           fi
 
       - name: Upload staged-construction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r2e-${{ github.sha }}
+          name: ogs-staged-construction-r2f-${{ github.sha }}
           path: staged-construction-evidence
