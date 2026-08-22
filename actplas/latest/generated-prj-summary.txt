@@ -1,0 +1,2 @@
+R03 refines the R02 cohesion transition between 12 and 14 MPa without changing geometry, solver, initial stress, or deactivation definition.
+R03_GRADUAL_ONLY keeps C=10 MPa and the upstream time_curve/line_segment deactivation but removes only the abrupt full-material time_interval block active after t=0.51. This isolates whether the constitutive integration failure is driven by the discontinuous bulk element removal.

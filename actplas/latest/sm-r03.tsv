@@ -1,0 +1,10 @@
+case	cohesion	deactivation_mode	exit_code	completed	mfront_integration_failure	first_failed_time	last_nonlinear_iteration
+SM_MC_DEACT_C14000K	14e6	abrupt_plus_curve	0	yes	no	-	2
+SM_MC_DEACT_C13750K	13.75e6	abrupt_plus_curve	0	yes	no	-	2
+SM_MC_DEACT_C13500K	13.5e6	abrupt_plus_curve	0	yes	no	-	2
+SM_MC_DEACT_C13250K	13.25e6	abrupt_plus_curve	0	yes	no	-	2
+SM_MC_DEACT_C13000K	13e6	abrupt_plus_curve	1	no	yes	1	2
+SM_MC_DEACT_C12750K	12.75e6	abrupt_plus_curve	1	no	yes	1	2
+SM_MC_DEACT_C12500K	12.5e6	abrupt_plus_curve	1	no	yes	1	2
+SM_MC_DEACT_C12000K	12e6	abrupt_plus_curve	1	no	yes	1	2
+SM_MC_DEACT_C10M_GRADUAL_ONLY	10e6	gradual_curve_only	1	no	yes	1	2
