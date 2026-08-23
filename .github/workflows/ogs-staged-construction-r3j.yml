@@ -66,7 +66,7 @@ jobs:
           set -euxo pipefail
           cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
 
-      - name: Generate exact excavation geometry with MFront MohrCoulombAbboSloan
+      - name: Generate excavation-only MFront MohrCoulombAbboSloan case
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
@@ -121,6 +121,16 @@ jobs:
           if text.count('    </parameters>') != 1:
               raise RuntimeError('unexpected parameters layout')
           text = text.replace('    </parameters>', params + '    </parameters>')
+
+          # The canonical regression continues after t=1 with a time-curve
+          # labelled "back-filling half of the tunnel".  R3J validates only
+          # deactivation/removal, so stop exactly after the excavation
+          # continuation reaches lambda=1. Activation/backfill is a separate
+          # lifecycle gate and must not contaminate this verdict.
+          if text.count('<t_end>8</t_end>') != 1:
+              raise RuntimeError('unexpected canonical t_end')
+          text = text.replace('<t_end>8</t_end>', '<t_end>1</t_end>')
+
           p.write_text(text, encoding='latin-1')
           PY
 
@@ -140,13 +150,15 @@ jobs:
           grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r3j.log
           grep -q 'Staged construction trial for process' staged-r3j.log
           grep -q 'Staged construction transition completed for process' staged-r3j.log
+          grep -q 'lambda = 1' staged-r3j.log
           ! grep -q 'MFront: integration failed' staged-r3j.log
+          ! grep -q 'Time step #3 started. Time: 1.2' staged-r3j.log
 
       - name: Freeze R3J evidence
         if: always()
         run: |
           mkdir -p staged-construction-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\nmaterial=MFront/MohrCoulombAbboSloan\ncohesion=5e6\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          printf 'upstream_sha=%s\nworkflow_sha=%s\nmaterial=MFront/MohrCoulombAbboSloan\ncohesion=5e6\nscope=deactivation_only_t_end_1\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
           cp ogs-upstream/staged-r3j.log staged-construction-evidence/ 2>/dev/null || true
           cp ogs-upstream/staged-r3j-case/time_linear_excavation.prj staged-construction-evidence/r3j-mfront-excavation.prj 2>/dev/null || true
           (cd ogs-upstream && git diff -- ProcessLib/TimeLoop.cpp ProcessLib/Process.h ProcessLib/SmallDeformation ProcessLib/StagedConstruction) > staged-construction-evidence/r3j.diff || true
