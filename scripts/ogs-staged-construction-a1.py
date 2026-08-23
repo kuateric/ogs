@@ -24,3 +24,4 @@ cpp.write_text(text, encoding="utf-8")
 print("Applied OGS Staged Construction A1 fresh activation constitutive-state initialization")
 
 # CI touch: force the registered A1 workflow to execute the embedded A2 full-backfill gate.
+# A2 execution trigger: activation/backfill full-horizon MFront regression.
