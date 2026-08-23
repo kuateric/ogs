@@ -45,7 +45,10 @@ jobs:
           grep -q 'does not call' ProcessLib/TimeLoop.cpp
           grep -q 'time_disc.nextTimestep(t, delta_t)' ProcessLib/TimeLoop.cpp
           test "$(grep -c 'time_disc.nextTimestep(t, delta_t)' ProcessLib/TimeLoop.cpp)" -eq 1
-          grep -q 'nonlinear_solver.solve(x, post_iteration_callback, process_id)' ProcessLib/TimeLoop.cpp
+          grep -q 'setEquationSystem(process_data)' ProcessLib/TimeLoop.cpp
+          grep -q 'nonlinear_solver.solve(' ProcessLib/TimeLoop.cpp
+          grep -q 'x, x_prev, post_iteration_callback, process_id' ProcessLib/TimeLoop.cpp
+          grep -q 'process.postNonLinearSolver(x, x_prev, t, delta_t, process_id)' ProcessLib/TimeLoop.cpp
           grep -q 'snapshot_solution' ProcessLib/StagedConstruction/ConstructionTimeLoopDriver.h
           grep -q 'mgis::behaviour::update(_behaviour_data)' MaterialLib/SolidModels/MFront/MFrontGeneric.h
           git diff --check
