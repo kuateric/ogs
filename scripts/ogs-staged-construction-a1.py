@@ -23,4 +23,4 @@ cpp.write_text(text, encoding="utf-8")
 
 print("Applied OGS Staged Construction A1 fresh activation constitutive-state initialization")
 
-# CI touch: retrigger A2 full backfill E2E after adding the workflow gate.
+# CI touch: force the registered A1 workflow to execute the embedded A2 full-backfill gate.
