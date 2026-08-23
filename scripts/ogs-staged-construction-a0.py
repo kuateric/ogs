@@ -84,3 +84,5 @@ if text.count(needle) != 1:
 header.write_text(text.replace(needle, replacement), encoding="utf-8")
 
 print("Applied OGS Staged Construction A0 activation placement-state contract")
+
+# CI-only synchronization marker for A2 full-backfill validation; no mechanics change.
