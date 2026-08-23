@@ -1,3 +1,4 @@
+# A2 trigger refresh: full MFront excavation/backfill lifecycle
 name: OGS-STAGED-CONSTRUCTION-A2
 
 on:
@@ -152,9 +153,6 @@ jobs:
           import re
 
           log = Path('staged-a2.log').read_text(errors='replace')
-          # The canonical case excavates by t=1 and later enters its
-          # "back-filling half of the tunnel" segment. We require successful
-          # advancement beyond the formerly failing t=1.2 point and to t_end.
           times = [float(m.group(1)) for m in re.finditer(r'Time:\s*([0-9.eE+-]+)', log)]
           if not times or max(times) < 8.0 - 1e-12:
               raise RuntimeError(f'full backfill horizon not reached; max time={max(times) if times else None}')
