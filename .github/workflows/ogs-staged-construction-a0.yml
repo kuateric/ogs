@@ -2,7 +2,9 @@ name: OGS-STAGED-CONSTRUCTION-A0
 
 on:
   push:
-    branches: [agent/ogs-staged-construction-activation-a0]
+    branches:
+      - agent/ogs-staged-construction-activation-a0
+      - agent/ogs-staged-construction-activation-a2-validation
   pull_request:
     paths:
       - 'scripts/ogs-staged-construction-a0.py'
