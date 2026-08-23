@@ -1,0 +1,104 @@
+name: OGS-STAGED-CONSTRUCTION-R2K
+
+on:
+  push:
+    branches: [agent/ogs-staged-construction-r0]
+    paths:
+      - '.github/workflows/ogs-staged-construction-r2k.yml'
+      - 'scripts/ogs-staged-construction-r2k.py'
+      - 'scripts/ogs-staged-construction-r2k-f01.py'
+      - 'scripts/ogs-staged-construction-r2j.py'
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-r2k.yml'
+      - 'scripts/ogs-staged-construction-r2k.py'
+      - 'scripts/ogs-staged-construction-r2k-f01.py'
+      - 'scripts/ogs-staged-construction-r2j.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retained-force-rhs-injection:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+          test -f Tests/Data/Mechanics/Excavation/time_linear_excavation.prj
+
+      - name: Apply R0 through R2K F01
+        run: |
+          set -euxo pipefail
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          cd ogs-upstream
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01; do python3 "ogs-staged-construction-${s}.py"; done
+          grep -q 'transition.forceAt(0.0)' ProcessLib/SmallDeformation/SmallDeformationProcess.cpp
+          grep -q 'b.add(global_indices' ProcessLib/SmallDeformation/SmallDeformationProcess.cpp
+          grep -q 'setAssemblyLocalResidualObserver' ProcessLib/SmallDeformation/SmallDeformationProcess.cpp
+          grep -q 'local_residual_observer_' ProcessLib/Assembly/ParallelVectorMatrixAssembler.cpp
+          grep -q 'staged_construction_pending_removal_transition_' ProcessLib/SmallDeformation/SmallDeformationProcess.h
+          git diff --check
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+
+      - name: Configure canonical OGS
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
+
+      - name: Build ProcessLib SmallDeformation and ogs
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
+
+      - name: Run canonical elastic excavation with full retained action
+        working-directory: ogs-upstream
+        run: |
+          set -euxo pipefail
+          OGS_BIN="$(find "${GITHUB_WORKSPACE}/build/release" -type f -name ogs -perm -111 | head -n1)"
+          test -n "$OGS_BIN"
+          mkdir -p staged-r2k-out
+          "$OGS_BIN" -o staged-r2k-out Tests/Data/Mechanics/Excavation/time_linear_excavation.prj > staged-r2k.log 2>&1
+          grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r2k.log
+
+      - name: Freeze R2K evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          cp ogs-upstream/staged-r2k.log staged-construction-evidence/ 2>/dev/null || true
+          (cd ogs-upstream && git diff -- ProcessLib/Assembly/ParallelVectorMatrixAssembler.h ProcessLib/Assembly/ParallelVectorMatrixAssembler.cpp ProcessLib/AssemblyMixin.h ProcessLib/SmallDeformation/SmallDeformationProcess.h ProcessLib/SmallDeformation/SmallDeformationProcess.cpp ProcessLib/StagedConstruction ProcessLib/ProcessVariable.h ProcessLib/ProcessVariable.cpp) > staged-construction-evidence/r2k.diff || true
+
+      - name: Upload R2K evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-r2k-${{ github.sha }}
+          path: staged-construction-evidence
