@@ -1,5 +1,6 @@
 name: OGS-STAGED-CONSTRUCTION-R3J
 
+# A2 authoritative full MFront excavation/backfill validation via the registered R3J workflow path.
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
@@ -18,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      OGS_UPSTREAM_URL: https://gitlab.opengeosys.org/ogs/ogs.git
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
       OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
