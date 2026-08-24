@@ -73,7 +73,7 @@ for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
     text = text.replace(marker, marker + '\n            <reference_temperature>T_ref</reference_temperature>')
     params = '''        <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
         <parameter><name>E_A</name><type>Constant</type><value>4000e6</value></parameter>
-        <parameter><name>E_B</name><type>Constant</type><value>1000e6</value></parameter>
+        <parameter><name>E_B</name><type>Constant</type><value>2000e6</value></parameter>
         <parameter><name>MC_Cohesion</name><type>Constant</type><value>5e6</value></parameter>
         <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
         <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
@@ -132,7 +132,8 @@ Path('staged-a3-evidence.txt').write_text(
     'control_activation_material_id=0\n' +
     'test_activation_material_id=1\n' +
     'material_A=MFront/MohrCoulombAbboSloan/E=4e9\n' +
-    'material_B=MFront/MohrCoulombAbboSloan/E=1e9\n' +
+    'material_B=MFront/MohrCoulombAbboSloan/E=2e9\n' +
     'final_vtu_different=1\n' +
-    'fresh_state_contract=A1\n', encoding='utf-8')
+    'fresh_state_contract=A1\n' +
+    'scope_note=A3 proves material identity reassignment; severe placement/load jumps are reserved for A4 controlled placement-state gate\n', encoding='utf-8')
 PY
