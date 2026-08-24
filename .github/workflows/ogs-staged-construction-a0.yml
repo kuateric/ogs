@@ -1,6 +1,6 @@
 name: OGS-STAGED-CONSTRUCTION-A0
 
-# A2 authoritative pull-request retrigger: full MFront excavation/backfill validation.
+# A2 authoritative full MFront excavation/backfill validation.
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   activation-backfill:
@@ -161,3 +161,19 @@ jobs:
         with:
           name: ogs-staged-construction-activation-${{ github.sha }}
           path: staged-construction-evidence
+      - name: Persist A2 execution verdict on activation branch
+        if: always() && github.event_name == 'push'
+        env:
+          A2_JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euxo pipefail
+          mkdir -p automation-evidence
+          printf 'gate=A2\njob_status=%s\nworkflow_sha=%s\nupstream_sha=%s\n' "$A2_JOB_STATUS" "$GITHUB_SHA" "$OGS_UPSTREAM_SHA" > automation-evidence/a2-status.txt
+          if test -f ogs-upstream/staged-a2-evidence.txt; then
+            cat ogs-upstream/staged-a2-evidence.txt >> automation-evidence/a2-status.txt
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add automation-evidence/a2-status.txt
+          git commit -m 'CI: persist A2 execution verdict' || exit 0
+          git push origin HEAD:agent/ogs-staged-construction-activation-a0
