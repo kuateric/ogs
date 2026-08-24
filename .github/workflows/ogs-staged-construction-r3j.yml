@@ -1,6 +1,5 @@
 name: OGS-STAGED-CONSTRUCTION-R3J
 
-# A2 authoritative full MFront excavation/backfill validation via the registered R3J workflow path.
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
@@ -12,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   a2-mfront-full-backfill:
@@ -24,6 +23,7 @@ jobs:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v4
+
       - name: Checkout exact canonical OGS upstream
         run: |
           set -euxo pipefail
@@ -167,3 +167,30 @@ jobs:
         with:
           name: ogs-staged-construction-a2-${{ github.sha }}
           path: staged-construction-evidence
+
+      - name: Persist authoritative A2 verdict on activation branch
+        if: always() && github.event_name == 'push'
+        run: |
+          set -euxo pipefail
+          mkdir -p automation-evidence
+          if test -f ogs-upstream/staged-a2-evidence.txt; then
+            verdict=PASS
+            cat ogs-upstream/staged-a2-evidence.txt > /tmp/a2-numerics.txt
+          else
+            verdict=FAIL
+            printf 'full_backfill_horizon_reached=0\n' > /tmp/a2-numerics.txt
+          fi
+          {
+            printf 'gate=A2_full_mfront_backfill_e2e\n'
+            printf 'verdict=%s\n' "$verdict"
+            printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+            printf 'upstream_sha=%s\n' "$OGS_UPSTREAM_SHA"
+            cat /tmp/a2-numerics.txt
+          } > automation-evidence/a2-status.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add automation-evidence/a2-status.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'evidence: persist authoritative A2 backfill verdict'
+            git push origin HEAD:agent/ogs-staged-construction-activation-a0
+          fi
