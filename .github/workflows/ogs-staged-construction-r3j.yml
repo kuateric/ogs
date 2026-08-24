@@ -1,40 +1,53 @@
 name: OGS-STAGED-CONSTRUCTION-R3J
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-r3j.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  a2-mfront-full-backfill:
+  a3-material-reassignment-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
       OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
       OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v4
 
       - name: Install build prerequisites
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
 
-      - name: Run authoritative A2 full MFront excavation-backfill lifecycle
-        run: bash scripts/run-ogs-staged-construction-a2.sh
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
 
-      - name: Freeze A2 evidence
+      - name: Run authoritative A3 material reassignment E2E
+        run: bash scripts/run-ogs-staged-construction-a3.sh
+
+      - name: Freeze A3 evidence
         if: always()
         run: |
           mkdir -p staged-construction-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A2_full_mfront_backfill_e2e\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
-          cp ogs-upstream/staged-a2.log staged-construction-evidence/ 2>/dev/null || true
-          cp ogs-upstream/staged-a2-evidence.txt staged-construction-evidence/ 2>/dev/null || true
-          cp ogs-upstream/staged-a2-case/time_linear_excavation.prj staged-construction-evidence/a2-mfront-backfill.prj 2>/dev/null || true
-          cp a2-failure.txt staged-construction-evidence/ 2>/dev/null || true
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A3_material_reassignment_e2e\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-evidence/provenance.txt
+          cp ogs-upstream/staged-a3-evidence.txt staged-construction-evidence/ 2>/dev/null || true
+          cp ogs-upstream/a3-control-A.log staged-construction-evidence/ 2>/dev/null || true
+          cp ogs-upstream/a3-test-B.log staged-construction-evidence/ 2>/dev/null || true
+          cp ogs-upstream/a3-control-A/time_linear_excavation.prj staged-construction-evidence/a3-control-A.prj 2>/dev/null || true
+          cp ogs-upstream/a3-test-B/time_linear_excavation.prj staged-construction-evidence/a3-test-B.prj 2>/dev/null || true
 
-      - name: Upload A2 evidence
+      - name: Upload A3 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-a2-${{ github.sha }}
+          name: ogs-staged-construction-a3-${{ github.sha }}
           path: staged-construction-evidence
