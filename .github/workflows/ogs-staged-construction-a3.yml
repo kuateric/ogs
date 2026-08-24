@@ -5,6 +5,9 @@ on:
     branches: [agent/ogs-staged-construction-activation-a0]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   activation-material-reassignment:
     runs-on: ubuntu-24.04
@@ -62,7 +65,7 @@ jobs:
         if: always()
         run: |
           mkdir -p staged-construction-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A3_material_reassignment_build\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A3_material_reassignment_build\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-evidence/provenance.txt
           (cd ogs-upstream && git diff -- ProcessLib/DeactivatedSubdomain.h ProcessLib/CreateDeactivatedSubdomain.cpp ProcessLib/ProcessVariable.cpp ProcessLib/SmallDeformation/LocalAssemblerInterface.h ProcessLib/SmallDeformation/SmallDeformationFEM.h) > staged-construction-evidence/a3.diff || true
 
       - name: Upload A3 evidence
@@ -71,3 +74,15 @@ jobs:
         with:
           name: ogs-staged-construction-a3-${{ github.sha }}
           path: staged-construction-evidence
+
+      - name: Persist authoritative A3 verdict
+        if: always()
+        run: |
+          mkdir -p automation-evidence
+          printf 'gate=A3_material_reassignment_build\nverdict=%s\nworkflow_sha=%s\nupstream_sha=%s\n' "${{ job.status }}" "$GITHUB_SHA" "$OGS_UPSTREAM_SHA" > automation-evidence/a3-status.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add automation-evidence/a3-status.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'evidence: persist authoritative A3 build verdict'
+          git push origin HEAD:agent/ogs-staged-construction-activation-a0
