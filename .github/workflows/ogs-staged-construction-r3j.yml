@@ -2,7 +2,7 @@ name: OGS-STAGED-CONSTRUCTION-R3J
 
 on:
   push:
-    branches: [agent/ogs-staged-construction-r0]
+    branches: [agent/ogs-staged-construction-activation-a0]
     paths:
       - '.github/workflows/ogs-staged-construction-r3j.yml'
   pull_request:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  mfront-plastic-adaptive-excavation:
+  a2-mfront-full-backfill:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -23,7 +23,6 @@ jobs:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v4
-
       - name: Checkout exact canonical OGS upstream
         run: |
           set -euxo pipefail
@@ -33,18 +32,18 @@ jobs:
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 
-      - name: Apply staged-construction implementation through R3I
+      - name: Apply staged-construction implementation through A1
         run: |
           set -euxo pipefail
-          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
           cd ogs-upstream
-          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i; do python3 "ogs-staged-construction-${s}.py"; done
+          for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1; do python3 "ogs-staged-construction-${s}.py"; done
+          grep -q 'initializeActivationPlacementState' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
+          grep -q 'newly_activated_element_ids' ProcessLib/SmallDeformation/SmallDeformationProcess.cpp
           git diff --check
 
       - name: Install build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
 
       - name: Restore OGS build cache
         uses: actions/cache@v4
@@ -56,41 +55,34 @@ jobs:
 
       - name: Configure canonical OGS with MFront
         working-directory: ogs-upstream
-        run: |
-          set -euxo pipefail
-          cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
+        run: cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
 
       - name: Build ProcessLib SmallDeformation and ogs
         working-directory: ogs-upstream
-        run: |
-          set -euxo pipefail
-          cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
+        run: cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
 
-      - name: Generate excavation-only MFront MohrCoulombAbboSloan case
+      - name: Generate full excavation-backfill MFront case
         working-directory: ogs-upstream
         run: |
-          set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import shutil
-
-          root = Path.cwd()
-          src = root / 'Tests/Data/Mechanics/Excavation'
-          dst = root / 'staged-r3j-case'
+          src = Path('Tests/Data/Mechanics/Excavation')
+          dst = Path('staged-a2-case')
           shutil.copytree(src, dst, dirs_exist_ok=True)
           p = dst / 'time_linear_excavation.prj'
           text = p.read_text(encoding='latin-1')
           old = '''            <constitutive_relation id="0,1">
-                          <type>LinearElasticIsotropic</type>
-                          <youngs_modulus>E</youngs_modulus>
-                          <poissons_ratio>nu</poissons_ratio>
-                      </constitutive_relation>'''
-          if old not in text:
-              old = '''            <constitutive_relation id="0,1">
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
                 <poissons_ratio>nu</poissons_ratio>
             </constitutive_relation>'''
+          if old not in text:
+              old = '''            <constitutive_relation id="0,1">
+                          <type>LinearElasticIsotropic</type>
+                          <youngs_modulus>E</youngs_modulus>
+                          <poissons_ratio>nu</poissons_ratio>
+                      </constitutive_relation>'''
           new = '''            <constitutive_relation id="0,1">
                 <type>MFront</type>
                 <behaviour>MohrCoulombAbboSloan</behaviour>
@@ -105,111 +97,72 @@ jobs:
                 </material_properties>
             </constitutive_relation>'''
           if text.count(old) != 1:
-              raise RuntimeError('expected exactly one elastic constitutive relation')
+              raise RuntimeError('expected one elastic constitutive relation')
           text = text.replace(old, new)
           marker = '            <specific_body_force>0 0</specific_body_force>'
           if text.count(marker) != 1:
               raise RuntimeError('unexpected process layout')
           text = text.replace(marker, marker + '\n            <reference_temperature>T_ref</reference_temperature>')
           params = '''        <parameter><name>T_ref</name><type>Constant</type><values>293.15</values></parameter>
-              <parameter><name>MC_Cohesion</name><type>Constant</type><value>5e6</value></parameter>
-              <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
-              <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
-              <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
-              <parameter><name>MC_TensionCutOff</name><type>Constant</type><value>1e6</value></parameter>
-          '''
+        <parameter><name>MC_Cohesion</name><type>Constant</type><value>5e6</value></parameter>
+        <parameter><name>MC_FrictionAngle</name><type>Constant</type><value>25</value></parameter>
+        <parameter><name>MC_DilatancyAngle</name><type>Constant</type><value>10</value></parameter>
+        <parameter><name>MC_TransitionAngle</name><type>Constant</type><value>27</value></parameter>
+        <parameter><name>MC_TensionCutOff</name><type>Constant</type><value>1e6</value></parameter>
+'''
           if text.count('    </parameters>') != 1:
               raise RuntimeError('unexpected parameters layout')
           text = text.replace('    </parameters>', params + '    </parameters>')
-
-          # The canonical regression continues after t=1 with a time-curve
-          # labelled "back-filling half of the tunnel". R3J validates only
-          # deactivation/removal, so stop exactly after the excavation
-          # continuation reaches lambda=1. Activation/backfill is a separate
-          # lifecycle gate and must not contaminate this verdict.
-          if text.count('<t_end>8</t_end>') != 1:
-              raise RuntimeError('unexpected canonical t_end')
-          text = text.replace('<t_end>8</t_end>', '<t_end>1</t_end>')
-
+          if '<t_end>8</t_end>' not in text:
+              raise RuntimeError('canonical backfill horizon missing')
           p.write_text(text, encoding='latin-1')
           PY
 
-      - name: Run MFront plastic excavation through adaptive construction runtime
+      - name: Run A2 full MFront excavation-backfill lifecycle
         working-directory: ogs-upstream
         run: |
           set -euxo pipefail
           OGS_BIN="$(find "${GITHUB_WORKSPACE}/build/release" -type f -name ogs -perm -111 | head -n1)"
           test -n "$OGS_BIN"
-          mkdir -p staged-r3j-out
+          mkdir -p staged-a2-out
           set +e
-          "$OGS_BIN" -o staged-r3j-out staged-r3j-case/time_linear_excavation.prj > staged-r3j.log 2>&1
+          "$OGS_BIN" -o staged-a2-out staged-a2-case/time_linear_excavation.prj > staged-a2.log 2>&1
           rc=$?
           set -e
-          cat staged-r3j.log
+          cat staged-a2.log
           test "$rc" -eq 0
-          grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully|Time step.*accepted' staged-r3j.log
-          grep -q 'Staged construction trial for process' staged-r3j.log
-          grep -q 'Staged construction transition completed for process' staged-r3j.log
-          grep -q 'lambda = 1' staged-r3j.log
-          ! grep -q 'MFront: integration failed' staged-r3j.log
-          ! grep -q 'Time step #3 started. Time: 1.2' staged-r3j.log
+          grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully' staged-a2.log
+          grep -q 'Staged construction transition completed for process' staged-a2.log
+          ! grep -q 'MFront: integration failed' staged-a2.log
 
-      - name: Verify constant-time monotone plastic continuation evidence
+      - name: Verify A2 full-horizon evidence
         working-directory: ogs-upstream
         run: |
-          set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
-
-          log = Path('staged-r3j.log').read_text(errors='replace')
-          trial_lines = [line for line in log.splitlines()
-                         if 'Staged construction trial for process' in line]
-          if len(trial_lines) < 2:
-              raise RuntimeError(f'expected multiple adaptive construction trials, got {len(trial_lines)}')
-
-          lambdas = []
-          times = []
-          for line in trial_lines:
-              lm = re.search(r'lambda\s*=\s*([0-9.eE+-]+)', line)
-              if not lm:
-                  raise RuntimeError(f'construction trial missing lambda: {line}')
-              lambdas.append(float(lm.group(1)))
-              tm = re.search(r'(?:time|t)\s*=\s*([0-9.eE+-]+)', line, re.IGNORECASE)
-              if tm:
-                  times.append(float(tm.group(1)))
-
-          if any(b <= a for a, b in zip(lambdas, lambdas[1:])):
-              raise RuntimeError(f'non-monotone committed trial sequence: {lambdas}')
-          if abs(lambdas[-1] - 1.0) > 1e-12:
-              raise RuntimeError(f'plastic excavation did not finish at lambda=1: {lambdas}')
-          if times and any(abs(t - times[0]) > 1e-12 for t in times[1:]):
-              raise RuntimeError(f'physical time advanced inside construction continuation: {times}')
-          if 'Staged construction transition completed for process' not in log:
-              raise RuntimeError('missing completed construction transition')
+          log = Path('staged-a2.log').read_text(errors='replace')
+          times = [float(m.group(1)) for m in re.finditer(r'Time:\s*([0-9.eE+-]+)', log)]
+          if not times or max(times) < 8.0 - 1e-12:
+              raise RuntimeError(f'full backfill horizon not reached: {max(times) if times else None}')
           if 'MFront: integration failed' in log:
-              raise RuntimeError('MFront integration failure observed during excavation scope')
-
-          Path('staged-r3j-continuation.txt').write_text(
-              'trial_count=' + str(len(lambdas)) + '\n' +
-              'lambdas=' + ','.join(f'{x:.16g}' for x in lambdas) + '\n' +
-              ('physical_times=' + ','.join(f'{x:.16g}' for x in times) + '\n' if times else '') +
-              'final_lambda=1\n', encoding='utf-8')
+              raise RuntimeError('MFront integration failure during backfill')
+          Path('staged-a2-evidence.txt').write_text(
+              f'max_time={max(times)}\nfull_backfill_horizon_reached=1\nmfront_integration_failure=0\n', encoding='utf-8')
           PY
 
-      - name: Freeze R3J evidence
+      - name: Freeze A2 evidence
         if: always()
         run: |
           mkdir -p staged-construction-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\nmaterial=MFront/MohrCoulombAbboSloan\ncohesion=5e6\nscope=deactivation_only_t_end_1\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
-          cp ogs-upstream/staged-r3j.log staged-construction-evidence/ 2>/dev/null || true
-          cp ogs-upstream/staged-r3j-continuation.txt staged-construction-evidence/ 2>/dev/null || true
-          cp ogs-upstream/staged-r3j-case/time_linear_excavation.prj staged-construction-evidence/r3j-mfront-excavation.prj 2>/dev/null || true
-          (cd ogs-upstream && git diff -- ProcessLib/TimeLoop.cpp ProcessLib/Process.h ProcessLib/SmallDeformation ProcessLib/StagedConstruction) > staged-construction-evidence/r3j.diff || true
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A2_full_mfront_backfill_e2e\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          cp ogs-upstream/staged-a2.log staged-construction-evidence/ 2>/dev/null || true
+          cp ogs-upstream/staged-a2-evidence.txt staged-construction-evidence/ 2>/dev/null || true
+          cp ogs-upstream/staged-a2-case/time_linear_excavation.prj staged-construction-evidence/a2-mfront-backfill.prj 2>/dev/null || true
 
-      - name: Upload R3J evidence
+      - name: Upload A2 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-r3j-${{ github.sha }}
+          name: ogs-staged-construction-a2-${{ github.sha }}
           path: staged-construction-evidence
