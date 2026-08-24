@@ -3,6 +3,8 @@ set -Eeuxo pipefail
 
 : "${OGS_UPSTREAM_URL:=https://github.com/Helmholtz-UFZ/ogs.git}"
 : "${OGS_UPSTREAM_SHA:=adf770974c7ee0435702fe617634d03d17ab7cb8}"
+: "${CPM_SOURCE_CACHE:=$PWD/.cpm-cache}"
+export CPM_SOURCE_CACHE
 
 A2_STAGE=initialization
 rm -f a2-failure.txt
