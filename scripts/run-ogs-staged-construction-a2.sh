@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -Eeuxo pipefail
 
 : "${OGS_UPSTREAM_URL:=https://github.com/Helmholtz-UFZ/ogs.git}"
 : "${OGS_UPSTREAM_SHA:=adf770974c7ee0435702fe617634d03d17ab7cb8}"
 
+A2_STAGE=initialization
+rm -f a2-failure.txt
+trap 'rc=$?; { printf "stage=%s\n" "$A2_STAGE"; printf "exit_code=%s\n" "$rc"; printf "line=%s\n" "$LINENO"; printf "command=%s\n" "$BASH_COMMAND"; if test -f ogs-upstream/staged-a2.log; then printf "log_tail_begin=1\n"; tail -n 120 ogs-upstream/staged-a2.log; printf "log_tail_end=1\n"; fi; } > a2-failure.txt; exit "$rc"' ERR
+
+A2_STAGE=canonical_checkout
 rm -rf ogs-upstream
 
 git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
@@ -14,6 +19,7 @@ git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
   test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 )
 
+A2_STAGE=apply_staged_construction_patches
 for s in r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1; do
   cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/
 done
@@ -27,6 +33,7 @@ done
   git diff --check
 )
 
+A2_STAGE=configure_mfront_small_deformation
 cmake -S ogs-upstream -B build/a2 -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DOGS_BUILD_GUI=OFF \
@@ -34,8 +41,11 @@ cmake -S ogs-upstream -B build/a2 -G Ninja \
   -DOGS_BUILD_TESTING=ON \
   -DOGS_USE_MFRONT=ON \
   -DOGS_BUILD_PROCESSES=SmallDeformation
+
+A2_STAGE=build_mfront_small_deformation
 cmake --build build/a2 --target ProcessLib SmallDeformation ogs --parallel 2
 
+A2_STAGE=prepare_plastic_backfill_case
 python3 - <<'PY'
 from pathlib import Path
 import shutil
@@ -90,6 +100,7 @@ if '<t_end>8</t_end>' not in text:
 p.write_text(text, encoding='latin-1')
 PY
 
+A2_STAGE=execute_plastic_excavation_backfill
 OGS_BIN="$(find build/a2 -type f -name ogs -perm -111 | head -n1)"
 test -n "$OGS_BIN"
 mkdir -p ogs-upstream/staged-a2-out
@@ -98,7 +109,11 @@ set +e
 rc=$?
 set -e
 cat ogs-upstream/staged-a2.log
-test "$rc" -eq 0
+if test "$rc" -ne 0; then
+  false
+fi
+
+A2_STAGE=validate_plastic_backfill_evidence
 grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully' ogs-upstream/staged-a2.log
 grep -q 'Staged construction transition completed for process' ogs-upstream/staged-a2.log
 ! grep -q 'MFront: integration failed' ogs-upstream/staged-a2.log
@@ -116,3 +131,7 @@ Path('ogs-upstream/staged-a2-evidence.txt').write_text(
     f'max_time={max(times)}\nfull_backfill_horizon_reached=1\nmfront_integration_failure=0\n',
     encoding='utf-8')
 PY
+
+A2_STAGE=complete
+trap - ERR
+rm -f a2-failure.txt
