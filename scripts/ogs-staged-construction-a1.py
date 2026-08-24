@@ -26,3 +26,4 @@ print("Applied OGS Staged Construction A1 fresh activation constitutive-state in
 # CI touch: force the registered A1 workflow to execute the embedded A2 full-backfill gate.
 # A2 execution trigger: activation/backfill full-horizon MFront regression.
 # A2 PR-event retrigger: watched script path, no mechanics change.
+# A2 authoritative validation v3 against current activation head.
