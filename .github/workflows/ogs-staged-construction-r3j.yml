@@ -33,6 +33,7 @@ jobs:
           cp ogs-upstream/staged-a2.log staged-construction-evidence/ 2>/dev/null || true
           cp ogs-upstream/staged-a2-evidence.txt staged-construction-evidence/ 2>/dev/null || true
           cp ogs-upstream/staged-a2-case/time_linear_excavation.prj staged-construction-evidence/a2-mfront-backfill.prj 2>/dev/null || true
+          cp a2-failure.txt staged-construction-evidence/ 2>/dev/null || true
 
       - name: Upload A2 evidence
         if: always()
@@ -48,17 +49,20 @@ jobs:
           mkdir -p automation-evidence
           if test -f ogs-upstream/staged-a2-evidence.txt; then
             verdict=PASS
-            cat ogs-upstream/staged-a2-evidence.txt > /tmp/a2-numerics.txt
+            cat ogs-upstream/staged-a2-evidence.txt > /tmp/a2-details.txt
           else
             verdict=FAIL
-            printf 'full_backfill_horizon_reached=0\n' > /tmp/a2-numerics.txt
+            printf 'full_backfill_horizon_reached=0\n' > /tmp/a2-details.txt
+            if test -f a2-failure.txt; then
+              cat a2-failure.txt >> /tmp/a2-details.txt
+            fi
           fi
           {
             printf 'gate=A2_full_mfront_backfill_e2e\n'
             printf 'verdict=%s\n' "$verdict"
             printf 'workflow_sha=%s\n' "$GITHUB_SHA"
             printf 'upstream_sha=%s\n' "$OGS_UPSTREAM_SHA"
-            cat /tmp/a2-numerics.txt
+            cat /tmp/a2-details.txt
           } > automation-evidence/a2-status.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
