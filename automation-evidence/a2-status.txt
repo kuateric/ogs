@@ -1,0 +1,5 @@
+gate=A2_full_mfront_backfill_e2e
+verdict=FAIL
+workflow_sha=52c5aa82f5908872a2de56012dbf29b0015e88ea
+upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
+full_backfill_horizon_reached=0
