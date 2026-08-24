@@ -1,0 +1,73 @@
+name: OGS-STAGED-CONSTRUCTION-A3
+
+on:
+  push:
+    branches: [agent/ogs-staged-construction-activation-a0]
+  workflow_dispatch:
+
+jobs:
+  activation-material-reassignment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout exact canonical OGS upstream
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+
+      - name: Apply staged-construction baseline through A3
+        run: |
+          set -euxo pipefail
+          stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3'
+          for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-upstream/; done
+          cd ogs-upstream
+          for s in $stages; do python3 "ogs-staged-construction-${s}.py"; done
+          grep -q 'activation_material_id' ProcessLib/DeactivatedSubdomain.h
+          grep -q 'activation_material_id' ProcessLib/CreateDeactivatedSubdomain.cpp
+          grep -q 'apply_activation_material_assignments' ProcessLib/ProcessVariable.cpp
+          grep -q 'solid_material_ = &MaterialLib::Solids::selectSolidConstitutiveRelation' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
+          grep -q 'MechanicsBase<DisplacementDim> const\* solid_material_' ProcessLib/SmallDeformation/LocalAssemblerInterface.h
+          git diff --check
+
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+
+      - name: Configure canonical OGS with MFront
+        working-directory: ogs-upstream
+        run: cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
+
+      - name: Build ProcessLib SmallDeformation and ogs
+        working-directory: ogs-upstream
+        run: cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
+
+      - name: Freeze A3 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A3_material_reassignment_build\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          (cd ogs-upstream && git diff -- ProcessLib/DeactivatedSubdomain.h ProcessLib/CreateDeactivatedSubdomain.cpp ProcessLib/ProcessVariable.cpp ProcessLib/SmallDeformation/LocalAssemblerInterface.h ProcessLib/SmallDeformation/SmallDeformationFEM.h) > staged-construction-evidence/a3.diff || true
+
+      - name: Upload A3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-a3-${{ github.sha }}
+          path: staged-construction-evidence
