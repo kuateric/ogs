@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-r3j.yml'
+      - 'scripts/run-ogs-staged-construction-a3.sh'
+      - 'scripts/ogs-staged-construction-a3.py'
   workflow_dispatch:
 
 permissions:
