@@ -124,13 +124,17 @@ python3 - <<'PY'
 from pathlib import Path
 import re
 log = Path('ogs-upstream/staged-a2.log').read_text(errors='replace')
-times = [float(m.group(1)) for m in re.finditer(r'Time:\s*([0-9.eE+-]+)', log)]
-if not times or max(times) < 8.0 - 1e-12:
-    raise RuntimeError(f'full backfill horizon not reached: {max(times) if times else None}')
+pattern = re.compile(r'Time step #[0-9]+ started\. Time:\s*([0-9.eE+-]+)')
+times = [float(m.group(1)) for m in pattern.finditer(log)]
+if not times:
+    raise RuntimeError('no OGS timestep time markers found in staged-a2.log')
+max_time = max(times)
+if max_time < 8.0 - 1e-12:
+    raise RuntimeError(f'full backfill horizon not reached: {max_time}')
 if 'MFront: integration failed' in log:
     raise RuntimeError('MFront integration failure during backfill')
 Path('ogs-upstream/staged-a2-evidence.txt').write_text(
-    f'max_time={max(times)}\nfull_backfill_horizon_reached=1\nmfront_integration_failure=0\n',
+    f'max_time={max_time}\nfull_backfill_horizon_reached=1\nmfront_integration_failure=0\naccepted_time_markers={len(times)}\n',
     encoding='utf-8')
 PY
 
