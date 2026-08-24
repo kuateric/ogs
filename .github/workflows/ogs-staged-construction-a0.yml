@@ -1,5 +1,6 @@
 name: OGS-STAGED-CONSTRUCTION-A0
 
+# A2 authoritative pull-request retrigger: full MFront excavation/backfill validation.
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
