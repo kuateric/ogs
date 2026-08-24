@@ -1,6 +1,7 @@
 name: OGS-STAGED-CONSTRUCTION-R3J
 
 # A2 authoritative full MFront excavation/backfill validation via the registered R3J workflow path.
+# Validation v4: exact-current-head pull_request trigger only; no mechanics change.
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
