@@ -3,6 +3,8 @@ name: OGS-STAGED-CONSTRUCTION-A3
 on:
   push:
     branches: [agent/ogs-staged-construction-activation-a0]
+  pull_request:
+    branches: [agent/ogs-staged-construction-r0]
   workflow_dispatch:
 
 permissions:
