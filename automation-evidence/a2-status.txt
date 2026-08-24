@@ -1,5 +1,9 @@
 gate=A2_full_mfront_backfill_e2e
 verdict=FAIL
-workflow_sha=52c5aa82f5908872a2de56012dbf29b0015e88ea
+workflow_sha=faa6149308c16cb8f5ebee39d1a61fa02e8f66cb
 upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
 full_backfill_horizon_reached=0
+stage=configure_mfront_small_deformation
+exit_code=1
+line=37
+command=cmake -S ogs-upstream -B build/a2 -G Ninja -DCMAKE_BUILD_TYPE=Release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON -DOGS_BUILD_PROCESSES=SmallDeformation
