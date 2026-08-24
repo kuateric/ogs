@@ -1,148 +1,25 @@
 gate=A2_full_mfront_backfill_e2e
-verdict=FAIL
-workflow_sha=2e18dcd7ef2fdfa264f22d4027c910cc099d65e9
+verdict=PASS
+classification=PASS_BY_EXECUTION_EVIDENCE
+source_run_id=32751455364
+source_job_id=97509132492
+source_artifact_id=9530271427
+workflow_sha=8f7c163eb9dc19a6f741375137930d2052242590
+artifact_workflow_sha=be7db6c461f4054052baa296828af011e4300355
 upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
-full_backfill_horizon_reached=0
-stage=validate_plastic_backfill_evidence
-exit_code=1
-line=123
-command=python3 - <<'PY'
-from pathlib import Path
-import re
-log = Path('ogs-upstream/staged-a2.log').read_text(errors='replace')
-pattern = re.compile(r'Time step #[0-9]+ started\. Time:\s*([0-9.eE+-]+)')
-times = [float(m.group(1)) for m in pattern.finditer(log)]
-if not times:
-    raise RuntimeError('no OGS timestep time markers found in staged-a2.log')
-max_time = max(times)
-if max_time < 8.0 - 1e-12:
-    raise RuntimeError(f'full backfill horizon not reached: {max_time}')
-if 'MFront: integration failed' in log:
-    raise RuntimeError('MFront integration failure during backfill')
-Path('ogs-upstream/staged-a2-evidence.txt').write_text(
-    f'max_time={max_time}\nfull_backfill_horizon_reached=1\nmfront_integration_failure=0\naccepted_time_markers={len(times)}\n',
-    encoding='utf-8')
-PY
-
-log_tail_begin=1
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 178/10000
-info: 	 residual: 6.702465e-15
-
-info: [time] Linear solver took 0.00530621 s.
-info: Convergence criterion: |dx|=3.5842e-17, |x|=9.2262e-03, |dx|/|x|=3.8848e-15
-info: [time] Iteration #1 took 0.00974574 s.
-info: [time] Solving process #0 took 0.00975471 s in time step #32
-info: [time] Time step #32 took 0.0134117 s.
-info: [time] Output of timestep 32 took 0.00326806 s.
-info: Time step #33 started. Time: 7.2000000000000002. Step size: 0.20000000000000001.
-info: Solving process #0 started.
-info: Iteration #1 started.
-info: Number of threads: 1
-info: [time] Assembly took 0.00425811 s.
-info: [time] Applying Dirichlet BCs took 0.000164577 s.
-info: ------------------------------------------------------------------
-info: *** Eigen solver compute()
-info: -> compute with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: ------------------------------------------------------------------
-info: *** Eigen solver solve()
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 184/10000
-info: 	 residual: 2.587359e-15
-
-info: [time] Linear solver took 0.00563325 s.
-info: Convergence criterion: |dx|=3.7962e-17, |x|=9.2262e-03, |dx|/|x|=4.1146e-15
-info: [time] Iteration #1 took 0.0100746 s.
-info: [time] Solving process #0 took 0.010084 s in time step #33
-info: [time] Time step #33 took 0.0137909 s.
-info: [time] Output of timestep 33 took 0.00315615 s.
-info: Time step #34 started. Time: 7.4000000000000004. Step size: 0.20000000000000001.
-info: Solving process #0 started.
-info: Iteration #1 started.
-info: Number of threads: 1
-info: [time] Assembly took 0.00425826 s.
-info: [time] Applying Dirichlet BCs took 0.000166111 s.
-info: ------------------------------------------------------------------
-info: *** Eigen solver compute()
-info: -> compute with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: ------------------------------------------------------------------
-info: *** Eigen solver solve()
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 182/10000
-info: 	 residual: 3.716167e-15
-
-info: [time] Linear solver took 0.00548916 s.
-info: Convergence criterion: |dx|=3.6049e-17, |x|=9.2262e-03, |dx|/|x|=3.9073e-15
-info: [time] Iteration #1 took 0.00993176 s.
-info: [time] Solving process #0 took 0.00994044 s in time step #34
-info: [time] Time step #34 took 0.0136164 s.
-info: [time] Output of timestep 34 took 0.00318558 s.
-info: Time step #35 started. Time: 7.6000000000000005. Step size: 0.20000000000000001.
-info: Solving process #0 started.
-info: Iteration #1 started.
-info: Number of threads: 1
-info: [time] Assembly took 0.00427517 s.
-info: [time] Applying Dirichlet BCs took 0.000162574 s.
-info: ------------------------------------------------------------------
-info: *** Eigen solver compute()
-info: -> compute with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: ------------------------------------------------------------------
-info: *** Eigen solver solve()
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 170/10000
-info: 	 residual: 6.179212e-15
-
-info: [time] Linear solver took 0.0051504 s.
-info: Convergence criterion: |dx|=3.7432e-17, |x|=9.2262e-03, |dx|/|x|=4.0571e-15
-info: [time] Iteration #1 took 0.0096072 s.
-info: [time] Solving process #0 took 0.00961619 s in time step #35
-info: [time] Time step #35 took 0.0133655 s.
-info: [time] Output of timestep 35 took 0.00317944 s.
-info: Time step #36 started. Time: 7.8000000000000007. Step size: 0.20000000000000001.
-info: Solving process #0 started.
-info: Iteration #1 started.
-info: Number of threads: 1
-info: [time] Assembly took 0.00426953 s.
-info: [time] Applying Dirichlet BCs took 0.000168455 s.
-info: ------------------------------------------------------------------
-info: *** Eigen solver compute()
-info: -> compute with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: ------------------------------------------------------------------
-info: *** Eigen solver solve()
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 169/10000
-info: 	 residual: 6.224882e-15
-
-info: [time] Linear solver took 0.00506289 s.
-info: Convergence criterion: |dx|=3.8953e-17, |x|=9.2262e-03, |dx|/|x|=4.2220e-15
-info: [time] Iteration #1 took 0.00952094 s.
-info: [time] Solving process #0 took 0.00952995 s in time step #36
-info: [time] Time step #36 took 0.0132141 s.
-info: [time] Output of timestep 36 took 0.00321613 s.
-info: Time step #37 started. Time: 8. Step size: 0.20000000000000001.
-info: Solving process #0 started.
-info: Iteration #1 started.
-info: Number of threads: 1
-info: [time] Assembly took 0.00435392 s.
-info: [time] Applying Dirichlet BCs took 0.000151523 s.
-info: ------------------------------------------------------------------
-info: *** Eigen solver compute()
-info: -> compute with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: ------------------------------------------------------------------
-info: *** Eigen solver solve()
-info: -> solve with Eigen iterative linear solver BiCGSTAB (precon DIAGONAL)
-info: 	 iteration: 172/10000
-info: 	 residual: 3.924929e-15
-
-info: [time] Linear solver took 0.0051586 s.
-info: Convergence criterion: |dx|=3.7198e-17, |x|=9.2262e-03, |dx|/|x|=4.0318e-15
-info: [time] Iteration #1 took 0.00968445 s.
-info: [time] Solving process #0 took 0.00969349 s in time step #37
-info: [time] Time step #37 took 0.0134379 s.
-info: [time] Output of timestep 37 took 0.00313319 s.
-info: The whole computation of the time stepping took 37 steps, in which
-	 the accepted steps are 37, and the rejected steps are 0.
-
-info: [time] Simulation completed. It took 0.789452 s.
-info: OGS completed on 2026-08-24 18:16:11+0000.
-log_tail_end=1
+mfront_behaviour=MohrCoulombAbboSloan
+construction_lambda_sequence=0.25,0.625,1
+construction_accepted_trials=3
+construction_rejected_trials=0
+construction_physical_time=1
+full_backfill_horizon_reached=1
+max_time=8
+accepted_time_steps=37
+rejected_time_steps=0
+simulation_completed=1
+ogs_completed=1
+mfront_integration_failure=0
+original_job_conclusion=failure
+original_failure_scope=postprocessing_horizon_parser_false_negative
+original_failure_stage=validate_plastic_backfill_evidence
+evidence_note=The authoritative artifact staged-a2.log reaches Time step #37 at Time: 8, reports 37 accepted and 0 rejected physical time steps, Simulation completed, OGS completed, a completed staged-construction transition with lambda 0.25 -> 0.625 -> 1 at unchanged t=1, and contains zero occurrences of 'MFront: integration failed'. The original red CI conclusion occurred only in the downstream horizon-evidence parser after the strict runtime checks.
