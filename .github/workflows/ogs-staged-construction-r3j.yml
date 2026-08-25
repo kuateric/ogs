@@ -6,12 +6,44 @@ on:
       - '.github/workflows/ogs-staged-construction-r3j.yml'
       - 'scripts/run-ogs-staged-construction-a3.sh'
       - 'scripts/ogs-staged-construction-a3.py'
+      - 'scripts/run-ogs-staged-construction-a4.sh'
+      - 'scripts/ogs-staged-construction-a4.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  a4-placement-state-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install contract-test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git python3
+
+      - name: Run A4 placement-state contract validation
+        run: bash scripts/run-ogs-staged-construction-a4.sh
+
+      - name: Freeze A4 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-a4-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4A_explicit_placement_state_contract\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4-evidence/provenance.txt
+          cp ogs-a4-contract/staged-a4-evidence.txt staged-construction-a4-evidence/ 2>/dev/null || true
+          (cd ogs-a4-contract && git diff -- ProcessLib/StagedConstruction) > staged-construction-a4-evidence/a4.diff 2>/dev/null || true
+
+      - name: Upload A4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-a4-${{ github.sha }}
+          path: staged-construction-a4-evidence
+
   a3-material-reassignment-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
