@@ -13,7 +13,7 @@ git checkout --detach FETCH_HEAD
 test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 cd ..
 
-stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3 a4 a4b a4c a4d'
+stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3 a4 a4b a4c a4d a4e'
 for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-a4c-e2e/; done
 cd ogs-a4c-e2e
 for s in $stages; do python3 "ogs-staged-construction-${s}.py"; done
@@ -107,7 +107,7 @@ rc=$?
 set -e
 cat a4c-strong-B.log
 if [ "$rc" -ne 0 ]; then
-    echo "A4C strong-contrast run failed with rc=$rc" >&2
+    echo "A4E strong-contrast run failed with rc=$rc" >&2
     exit "$rc"
 fi
 
@@ -122,23 +122,24 @@ log = Path('a4c-strong-B.log').read_text(errors='replace')
 number = r'[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?'
 times = [float(m.group(1)) for m in re.finditer(r'Time:\s*(' + number + r')', log)]
 if not times or max(times) < 8.0 - 1e-12:
-    raise RuntimeError(f'A4C full backfill horizon not reached; max={max(times) if times else None}')
+    raise RuntimeError(f'A4E full backfill horizon not reached; max={max(times) if times else None}')
 trials = re.findall(r'Staged construction (?:pre-solve )?trial for process.*?lambda\s*=\s*(' + number + r')', log)
 completed = log.count('Staged construction transition completed for process')
 if completed < 2:
-    raise RuntimeError(f'A4C expected removal and activation continuations; completed={completed}')
+    raise RuntimeError(f'A4E expected removal and activation continuations; completed={completed}')
 if not re.search(r'Staged construction pre-solve trial for process.*?physical time t\s*=\s*1\.2', log):
     raise RuntimeError('A4D activation pre-solve trial at t=1.2 not observed')
 if not re.search(r'Staged construction trial for process.*?unchanged physical time t\s*=\s*1\.2', log):
-    raise RuntimeError('A4C activation continuation after pre-solve trial at t=1.2 not observed')
+    raise RuntimeError('A4E activation continuation after pre-solve trial at t=1.2 not observed')
 Path('staged-a4c-evidence.txt').write_text(
     f'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
-    f'gate=A4D_strong_contrast_pre_solve_controlled_activation_e2e\n'
+    f'gate=A4E_strong_contrast_regularized_activation_e2e\n'
     f'max_time={max(times)}\n'
     f'material_A=MFront/MohrCoulombAbboSloan/E=4e9\n'
     f'material_B=MFront/MohrCoulombAbboSloan/E=1e9\n'
     f'activation_material_id=2\n'
     f'placement_reference=stress_free_displacement_at_birth\n'
+    f'activation_homotopy=scaled_residual_full_placement_tangent\n'
     f'pre_solve_activation_trial=1\n'
     f'construction_trials={len(trials)}\n'
     f'construction_transition_completed={completed}\n'
