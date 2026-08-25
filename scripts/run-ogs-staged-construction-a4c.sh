@@ -13,7 +13,7 @@ git checkout --detach FETCH_HEAD
 test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 cd ..
 
-stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3 a4 a4b a4c a4d a4e a4f a4g a4h a4i'
+stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3 a4 a4b a4c a4d a4e a4f a4g a4h a4i a4j'
 for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-a4c-e2e/; done
 cd ogs-a4c-e2e
 for s in $stages; do python3 "ogs-staged-construction-${s}.py"; done
@@ -107,12 +107,14 @@ rc=$?
 set -e
 cat a4c-strong-B.log
 if [ "$rc" -ne 0 ]; then
-    echo "A4I constitutive-homotopy strong-contrast run failed with rc=$rc" >&2
+    echo "A4J deferred-activation strong-contrast run failed with rc=$rc" >&2
     exit "$rc"
 fi
 
 grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully' a4c-strong-B.log
 grep -q 'Staged construction transition completed for process' a4c-strong-B.log
+grep -q 'Staged construction inactive baseline completed for process' a4c-strong-B.log
+grep -q 'Staged construction activation published for process' a4c-strong-B.log
 ! grep -q 'MFront: integration failed' a4c-strong-B.log
 
 python3 - <<'PY'
@@ -122,17 +124,23 @@ log = Path('a4c-strong-B.log').read_text(errors='replace')
 number = r'[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?'
 times = [float(m.group(1)) for m in re.finditer(r'Time:\s*(' + number + r')', log)]
 if not times or max(times) < 8.0 - 1e-12:
-    raise RuntimeError(f'A4I full backfill horizon not reached; max={max(times) if times else None}')
+    raise RuntimeError(f'A4J full backfill horizon not reached; max={max(times) if times else None}')
 trials = re.findall(r'Staged construction (?:pre-solve )?trial for process.*?lambda\s*=\s*(' + number + r')', log)
 completed = log.count('Staged construction transition completed for process')
+baselines = log.count('Staged construction inactive baseline completed for process')
+published = log.count('Staged construction activation published for process')
 if completed < 2:
-    raise RuntimeError(f'A4I expected removal and activation continuations; completed={completed}')
+    raise RuntimeError(f'A4J expected removal and activation continuations; completed={completed}')
+if baselines < 1 or published < 1:
+    raise RuntimeError(f'A4J deferred activation split not observed; baselines={baselines}, published={published}')
 Path('staged-a4c-evidence.txt').write_text(
     f'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
-    f'gate=A4I_constitutive_birth_deformation_homotopy_e2e\n'
+    f'gate=A4J_deferred_activation_strong_contrast_e2e\n'
     f'max_time={max(times)}\n'
     f'construction_trials={len(trials)}\n'
     f'construction_transition_completed={completed}\n'
+    f'inactive_baseline_completed={baselines}\n'
+    f'activation_published={published}\n'
     f'mfront_integration_failure=0\n'
     f'full_backfill_horizon_reached=1\n',
     encoding='utf-8')
