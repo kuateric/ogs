@@ -15,8 +15,10 @@ if text.count(anchor) != 1:
     raise RuntimeError("Unexpected LocalAssembler commit anchor")
 text = text.replace(anchor, method + anchor)
 
-member_anchor = '''protected:\n    NumLib::Fem::Integration::GenericIntegrationMethod const& integration_method_;\n'''
-member_replacement = '''protected:\n    double activation_contribution_scale_ = 1.0;\n\n    NumLib::Fem::Integration::GenericIntegrationMethod const& integration_method_;\n'''
+# Keep this anchor tied to a stable upstream member instead of the historical
+# integration-method spelling, which changed between OGS revisions.
+member_anchor = '''protected:\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
+member_replacement = '''protected:\n    double activation_contribution_scale_ = 1.0;\n\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
 if text.count(member_anchor) != 1:
     raise RuntimeError("Unexpected LocalAssembler protected member anchor")
 text = text.replace(member_anchor, member_replacement)
