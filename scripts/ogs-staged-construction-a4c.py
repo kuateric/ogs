@@ -13,22 +13,37 @@ root = Path.cwd()
 la = root / "ProcessLib/SmallDeformation/LocalAssemblerInterface.h"
 text = la.read_text(encoding="utf-8")
 
-# A3 extends A1 by rebinding the constitutive relation before creating the fresh
-# state. Preserve that exact method body and only append the placement-reference
-# initialization before the method returns. This avoids coupling A4C to the
-# historical A1-only method spelling.
+# Insert placement-reference reset into initializeActivationPlacementState()
+# itself. A4B inserts activationContributionScale() between that function and
+# the next historical comment, so using the comment as the end anchor would
+# accidentally mutate the const scale getter.
 method_start = "    void initializeActivationPlacementState(std::size_t const element_id)\n    {\n"
-commit_anchor = "    // Commit the already converged constitutive trial state as the baseline for\n"
-if text.count(method_start) != 1 or text.count(commit_anchor) != 1:
+if text.count(method_start) != 1:
     raise RuntimeError("Unexpected A3 activation placement-state method layout")
 start = text.index(method_start)
-end = text.index(commit_anchor, start)
-method = text[start:end]
-method_tail = "    }\n\n"
-if not method.endswith(method_tail):
-    raise RuntimeError("Unexpected A3 activation placement-state method tail")
-method = method[:-len(method_tail)] + '''\n        activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n    }\n\n    void captureActivationReferenceDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u)\n    {\n        if (!activation_reference_pending_)\n        {\n            return;\n        }\n        activation_reference_displacement_ = u;\n        activation_reference_pending_ = false;\n    }\n\n    Eigen::VectorXd activationRelativeDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u) const\n    {\n        if (activation_reference_displacement_.size() == 0)\n        {\n            return u;\n        }\n        if (activation_reference_displacement_.size() != u.size())\n        {\n            OGS_FATAL(\n                "Activation placement reference size does not match local "\n                "displacement size.");\n        }\n        return u - activation_reference_displacement_;\n    }\n\n'''
-text = text[:start] + method + text[end:]
+brace_start = text.index("{", start)
+depth = 0
+end_brace = None
+for i in range(brace_start, len(text)):
+    if text[i] == "{":
+        depth += 1
+    elif text[i] == "}":
+        depth -= 1
+        if depth == 0:
+            end_brace = i
+            break
+if end_brace is None:
+    raise RuntimeError("Could not locate activation placement-state method end")
+insert = "\n        activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n"
+text = text[:end_brace] + insert + text[end_brace:]
+
+# Add placement-reference helpers immediately before the already existing A4B
+# scale setter. They intentionally mutate state only in non-const methods.
+scale_setter = "    void setActivationContributionScale(std::size_t const /*element_id*/,\n"
+if text.count(scale_setter) != 1:
+    raise RuntimeError("Unexpected A4B scale-setter anchor")
+helpers = '''    void captureActivationReferenceDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u)\n    {\n        if (!activation_reference_pending_)\n        {\n            return;\n        }\n        activation_reference_displacement_ = u;\n        activation_reference_pending_ = false;\n    }\n\n    Eigen::VectorXd activationRelativeDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u) const\n    {\n        if (activation_reference_displacement_.size() == 0)\n        {\n            return u;\n        }\n        if (activation_reference_displacement_.size() != u.size())\n        {\n            OGS_FATAL(\n                "Activation placement reference size does not match local "\n                "displacement size.");\n        }\n        return u - activation_reference_displacement_;\n    }\n\n'''
+text = text.replace(scale_setter, helpers + scale_setter)
 
 member_anchor = '''protected:\n    double activation_contribution_scale_ = 1.0;\n\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
 member_replacement = '''protected:\n    double activation_contribution_scale_ = 1.0;\n    bool activation_reference_pending_ = false;\n    Eigen::VectorXd activation_reference_displacement_;\n\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
