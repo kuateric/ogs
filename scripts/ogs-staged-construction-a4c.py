@@ -34,7 +34,11 @@ for i in range(brace_start, len(text)):
             break
 if end_brace is None:
     raise RuntimeError("Could not locate activation placement-state method end")
-insert = "\n        activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n"
+# end_brace points at the closing brace itself, while the four indentation
+# spaces preceding it are already part of text[:end_brace]. Start the inserted
+# text with four additional spaces and end with four spaces so no whitespace-
+# only line is generated in the resulting C++ patch.
+insert = "    activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n    "
 text = text[:end_brace] + insert + text[end_brace:]
 
 # Add placement-reference helpers immediately before the already existing A4B
