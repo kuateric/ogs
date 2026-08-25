@@ -92,3 +92,5 @@ activation_monotonicity=1
 activation_cutback=1
 physical_time_semantics=construction_coordinate_only
 EOF
+
+# CI synchronization marker: A4J deferred activation baseline/operator-split validation.
