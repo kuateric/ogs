@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 root = Path.cwd()
 
@@ -62,3 +63,12 @@ if text.count(old) != 1:
 fem.write_text(text.replace(old, new), encoding="utf-8")
 
 print("Applied OGS Staged Construction A4I constitutive birth-deformation homotopy")
+
+# The authoritative strong-contrast runner historically ends at A4I.  Chain the
+# A4J operator-split activation publication as the next isolated patch while the
+# runner/workflow remains frozen.  This keeps the validation path auditable and
+# avoids weakening or replacing any existing A4I assertion.
+a4j = root.parent / "scripts" / "ogs-staged-construction-a4j.py"
+if not a4j.is_file():
+    raise RuntimeError(f"A4J patch script not found at {a4j}")
+runpy.run_path(str(a4j), run_name="__main__")
