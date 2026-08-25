@@ -4,22 +4,31 @@ from pathlib import Path
 root = Path.cwd()
 
 # A4C: a newly placed material must be stress/strain free in the configuration
-# in which it is born.  Fresh MFront history alone is not sufficient when the
+# in which it is born. Fresh MFront history alone is not sufficient when the
 # host mesh already carries non-zero displacement: using B*u directly would
 # feed the old host deformation into the new material as an instantaneous
-# strain jump.  Store the nodal displacement at first assembly after activation
+# strain jump. Store the nodal displacement at first assembly after activation
 # and evaluate the placed material with displacement relative to that reference.
 
 la = root / "ProcessLib/SmallDeformation/LocalAssemblerInterface.h"
 text = la.read_text(encoding="utf-8")
 
-# A1 owns activation-state initialization. Extend it without weakening the
-# already frozen fresh-material-state semantics.
-old = '''    void initializeActivationPlacementState(std::size_t const /*element_id*/)\n    {\n        for (std::size_t ip = 0; ip < material_states_.size(); ++ip)\n        {\n            material_states_[ip] = MaterialStateData<DisplacementDim>{\n                solid_material_.createMaterialStateVariables()};\n\n            current_states_[ip] = {};\n            std::get<StressData<DisplacementDim>>(current_states_[ip])\n                .sigma.noalias() = MathLib::KelvinVector::KelvinVectorType<\n                DisplacementDim>::Zero();\n            prev_states_[ip] = current_states_[ip];\n            output_data_[ip] = {};\n        }\n    }\n\n'''
-new = '''    void initializeActivationPlacementState(std::size_t const /*element_id*/)\n    {\n        for (std::size_t ip = 0; ip < material_states_.size(); ++ip)\n        {\n            material_states_[ip] = MaterialStateData<DisplacementDim>{\n                solid_material_.createMaterialStateVariables()};\n\n            current_states_[ip] = {};\n            std::get<StressData<DisplacementDim>>(current_states_[ip])\n                .sigma.noalias() = MathLib::KelvinVector::KelvinVectorType<\n                DisplacementDim>::Zero();\n            prev_states_[ip] = current_states_[ip];\n            output_data_[ip] = {};\n        }\n\n        activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n    }\n\n    void captureActivationReferenceDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u)\n    {\n        if (!activation_reference_pending_)\n        {\n            return;\n        }\n        activation_reference_displacement_ = u;\n        activation_reference_pending_ = false;\n    }\n\n    Eigen::VectorXd activationRelativeDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u) const\n    {\n        if (activation_reference_displacement_.size() == 0)\n        {\n            return u;\n        }\n        if (activation_reference_displacement_.size() != u.size())\n        {\n            OGS_FATAL(\n                "Activation placement reference size does not match local "\n                "displacement size.");\n        }\n        return u - activation_reference_displacement_;\n    }\n\n'''
-if text.count(old) != 1:
-    raise RuntimeError("Unexpected A1 activation placement-state method")
-text = text.replace(old, new)
+# A3 extends A1 by rebinding the constitutive relation before creating the fresh
+# state. Preserve that exact method body and only append the placement-reference
+# initialization before the method returns. This avoids coupling A4C to the
+# historical A1-only method spelling.
+method_start = "    void initializeActivationPlacementState(std::size_t const element_id)\n    {\n"
+commit_anchor = "    // Commit the already converged constitutive trial state as the baseline for\n"
+if text.count(method_start) != 1 or text.count(commit_anchor) != 1:
+    raise RuntimeError("Unexpected A3 activation placement-state method layout")
+start = text.index(method_start)
+end = text.index(commit_anchor, start)
+method = text[start:end]
+method_tail = "    }\n\n"
+if not method.endswith(method_tail):
+    raise RuntimeError("Unexpected A3 activation placement-state method tail")
+method = method[:-len(method_tail)] + '''\n        activation_reference_displacement_.resize(0);\n        activation_reference_pending_ = true;\n    }\n\n    void captureActivationReferenceDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u)\n    {\n        if (!activation_reference_pending_)\n        {\n            return;\n        }\n        activation_reference_displacement_ = u;\n        activation_reference_pending_ = false;\n    }\n\n    Eigen::VectorXd activationRelativeDisplacement(\n        Eigen::Ref<Eigen::VectorXd const> const u) const\n    {\n        if (activation_reference_displacement_.size() == 0)\n        {\n            return u;\n        }\n        if (activation_reference_displacement_.size() != u.size())\n        {\n            OGS_FATAL(\n                "Activation placement reference size does not match local "\n                "displacement size.");\n        }\n        return u - activation_reference_displacement_;\n    }\n\n'''
+text = text[:start] + method + text[end:]
 
 member_anchor = '''protected:\n    double activation_contribution_scale_ = 1.0;\n\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
 member_replacement = '''protected:\n    double activation_contribution_scale_ = 1.0;\n    bool activation_reference_pending_ = false;\n    Eigen::VectorXd activation_reference_displacement_;\n\n    SmallDeformationProcessData<DisplacementDim>& process_data_;\n'''
