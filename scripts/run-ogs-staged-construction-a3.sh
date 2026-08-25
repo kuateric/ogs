@@ -28,11 +28,15 @@ import shutil
 
 root = Path.cwd()
 src = root / 'Tests/Data/Mechanics/Excavation'
-for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
+for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 2)]:
     dst = root / name
     shutil.copytree(src, dst, dirs_exist_ok=True)
     p = dst / 'time_linear_excavation.prj'
     text = p.read_text(encoding='latin-1')
+
+    # Keep both canonical, already-active material IDs 0 and 1 on material A.
+    # Material B gets a new dormant material ID 2 and is therefore introduced
+    # into the mechanical model only by the activation event in the test case.
     old = '''            <constitutive_relation id="0,1">
                 <type>LinearElasticIsotropic</type>
                 <youngs_modulus>E</youngs_modulus>
@@ -40,7 +44,7 @@ for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
             </constitutive_relation>'''
     if text.count(old) != 1:
         raise RuntimeError('unexpected canonical constitutive relation')
-    relation0 = '''            <constitutive_relation id="0">
+    relation_a = '''            <constitutive_relation id="0,1">
                 <type>MFront</type>
                 <behaviour>MohrCoulombAbboSloan</behaviour>
                 <material_properties>
@@ -53,7 +57,7 @@ for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
                     <material_property name="TensionCutOffParameter" parameter="MC_TensionCutOff"/>
                 </material_properties>
             </constitutive_relation>'''
-    relation1 = '''            <constitutive_relation id="1">
+    relation_b = '''            <constitutive_relation id="2">
                 <type>MFront</type>
                 <behaviour>MohrCoulombAbboSloan</behaviour>
                 <material_properties>
@@ -66,7 +70,15 @@ for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
                     <material_property name="TensionCutOffParameter" parameter="MC_TensionCutOff"/>
                 </material_properties>
             </constitutive_relation>'''
-    text = text.replace(old, relation0 + '\n' + relation1)
+    text = text.replace(old, relation_a + '\n' + relation_b)
+
+    # MPL must also know the dormant material ID. Its density is intentionally
+    # identical so that the only A/B distinction in this gate is constitutive.
+    medium_tag = '<medium id="0, 1">'
+    if text.count(medium_tag) != 1:
+        raise RuntimeError('unexpected canonical medium layout')
+    text = text.replace(medium_tag, '<medium id="0, 1, 2">')
+
     marker = '            <specific_body_force>0 0</specific_body_force>'
     if text.count(marker) != 1:
         raise RuntimeError('unexpected process layout')
@@ -93,7 +105,7 @@ for name, activation_id in [('a3-control-A', 0), ('a3-test-B', 1)]:
 
 control = (root/'a3-control-A/time_linear_excavation.prj').read_text(encoding='latin-1')
 test = (root/'a3-test-B/time_linear_excavation.prj').read_text(encoding='latin-1')
-if control.replace('<activation_material_id>0</activation_material_id>', '<activation_material_id>X</activation_material_id>') != test.replace('<activation_material_id>1</activation_material_id>', '<activation_material_id>X</activation_material_id>'):
+if control.replace('<activation_material_id>0</activation_material_id>', '<activation_material_id>X</activation_material_id>') != test.replace('<activation_material_id>2</activation_material_id>', '<activation_material_id>X</activation_material_id>'):
     raise RuntimeError('A3 control and test differ in more than activation_material_id')
 PY
 
@@ -130,10 +142,12 @@ if evidence[0][3] == evidence[1][3]:
 Path('staged-a3-evidence.txt').write_text(
     '\n'.join(f'{case}:max_time={t}:final={name}:sha256={digest}' for case,t,name,digest in evidence) + '\n' +
     'control_activation_material_id=0\n' +
-    'test_activation_material_id=1\n' +
+    'test_activation_material_id=2\n' +
+    'canonical_active_material_ids=0,1\n' +
     'material_A=MFront/MohrCoulombAbboSloan/E=4e9\n' +
     'material_B=MFront/MohrCoulombAbboSloan/E=3.8e9\n' +
+    'material_B_pre_activation=dormant_id_2\n' +
     'final_vtu_different=1\n' +
     'fresh_state_contract=A1\n' +
-    'scope_note=A3 proves material identity reassignment with a deliberately small constitutive contrast; large placement/load jumps are reserved for A4 controlled placement-state gate\n', encoding='utf-8')
+    'scope_note=A3 isolates material identity reassignment; large placement/load jumps are reserved for A4 controlled placement-state gate\n', encoding='utf-8')
 PY
