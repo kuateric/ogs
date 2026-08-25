@@ -124,9 +124,10 @@ from pathlib import Path
 import hashlib, re
 
 evidence = []
+number = r'[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?'
 for case in ['a3-control-A', 'a3-test-B']:
     log = Path(case + '.log').read_text(errors='replace')
-    times = [float(m.group(1)) for m in re.finditer(r'Time:\s*([0-9.eE+-]+)', log)]
+    times = [float(m.group(1)) for m in re.finditer(r'Time:\s*(' + number + r')', log)]
     if not times or max(times) < 8.0 - 1e-12:
         raise RuntimeError(f'{case}: full backfill horizon not reached')
     files = sorted(Path(case + '-out').glob('*.vtu'))
