@@ -15,7 +15,9 @@ cd ..
 
 stages='r0 r2b r2c r2d r2e r2f r2g r2h r2i r2j r2k r2k-f01 r2l r3a r3b r3c r3d r3e r3f r3g r3h r3i a0 a1 a3 a4 a4b a4c a4d a4e a4f a4g a4h a4i a4j'
 for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-a4c-e2e/; done
+cp scripts/ogs-staged-construction-a4j-anchor-fix.py ogs-a4c-e2e/
 cd ogs-a4c-e2e
+python3 ogs-staged-construction-a4j-anchor-fix.py
 for s in $stages; do python3 "ogs-staged-construction-${s}.py"; done
 git diff --check
 
