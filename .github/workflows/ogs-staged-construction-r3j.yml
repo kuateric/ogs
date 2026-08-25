@@ -10,6 +10,7 @@ on:
       - 'scripts/ogs-staged-construction-a4.py'
       - 'scripts/run-ogs-staged-construction-a4b.sh'
       - 'scripts/ogs-staged-construction-a4b.py'
+      - 'scripts/run-ogs-staged-construction-a4c.sh'
   workflow_dispatch:
 
 permissions:
@@ -24,13 +25,10 @@ jobs:
       OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
     steps:
       - uses: actions/checkout@v4
-
       - name: Install contract-test prerequisites
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential git python3
-
       - name: Run A4 placement-state contract validation
         run: bash scripts/run-ogs-staged-construction-a4.sh
-
       - name: Freeze A4 evidence
         if: always()
         run: |
@@ -38,7 +36,6 @@ jobs:
           printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4A_explicit_placement_state_contract\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4-evidence/provenance.txt
           cp ogs-a4-contract/staged-a4-evidence.txt staged-construction-a4-evidence/ 2>/dev/null || true
           (cd ogs-a4-contract && git diff -- ProcessLib/StagedConstruction) > staged-construction-a4-evidence/a4.diff 2>/dev/null || true
-
       - name: Upload A4 evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,10 +52,8 @@ jobs:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v4
-
       - name: Install build prerequisites
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
-
       - name: Restore OGS build cache
         uses: actions/cache@v4
         with:
@@ -66,10 +61,8 @@ jobs:
             build/release
             .cpm-cache
           key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
-
       - name: Run A4B controlled activation runtime build gate
         run: bash scripts/run-ogs-staged-construction-a4b.sh
-
       - name: Freeze A4B evidence
         if: always()
         run: |
@@ -77,13 +70,47 @@ jobs:
           printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4B_controlled_activation_runtime_build\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4b-evidence/provenance.txt
           cp ogs-a4b-runtime/staged-a4b-evidence.txt staged-construction-a4b-evidence/ 2>/dev/null || true
           (cd ogs-a4b-runtime && git diff -- ProcessLib/SmallDeformation ProcessLib/StagedConstruction) > staged-construction-a4b-evidence/a4b.diff 2>/dev/null || true
-
       - name: Upload A4B evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ogs-staged-construction-a4b-${{ github.sha }}
           path: staged-construction-a4b-evidence
+
+  a4c-strong-contrast-controlled-activation-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+      - name: Run A4C strong-contrast controlled activation E2E
+        run: bash scripts/run-ogs-staged-construction-a4c.sh
+      - name: Freeze A4C evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-a4c-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4C_strong_contrast_controlled_activation_e2e\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4c-evidence/provenance.txt
+          cp ogs-a4c-e2e/staged-a4c-evidence.txt staged-construction-a4c-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B.log staged-construction-a4c-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B/time_linear_excavation.prj staged-construction-a4c-evidence/a4c-strong-B.prj 2>/dev/null || true
+      - name: Upload A4C evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-a4c-${{ github.sha }}
+          path: staged-construction-a4c-evidence
 
   a3-material-reassignment-e2e:
     runs-on: ubuntu-24.04
@@ -94,10 +121,8 @@ jobs:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
       - uses: actions/checkout@v4
-
       - name: Install build prerequisites
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
-
       - name: Restore OGS build cache
         uses: actions/cache@v4
         with:
@@ -105,10 +130,8 @@ jobs:
             build/release
             .cpm-cache
           key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
-
       - name: Run authoritative A3 material reassignment E2E
         run: bash scripts/run-ogs-staged-construction-a3.sh
-
       - name: Freeze A3 evidence
         if: always()
         run: |
@@ -119,7 +142,6 @@ jobs:
           cp ogs-upstream/a3-test-B.log staged-construction-evidence/ 2>/dev/null || true
           cp ogs-upstream/a3-control-A/time_linear_excavation.prj staged-construction-evidence/a3-control-A.prj 2>/dev/null || true
           cp ogs-upstream/a3-test-B/time_linear_excavation.prj staged-construction-evidence/a3-test-B.prj 2>/dev/null || true
-
       - name: Upload A3 evidence
         if: always()
         uses: actions/upload-artifact@v4
