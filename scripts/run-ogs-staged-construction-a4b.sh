@@ -25,7 +25,10 @@ grep -q 'local_Jac \*= activation_scale' ProcessLib/SmallDeformation/SmallDeform
 grep -q 'staged_construction_activation_transition_' ProcessLib/SmallDeformation/SmallDeformationProcess.h
 grep -q 'setActivationContributionScale' ProcessLib/SmallDeformation/SmallDeformationProcess.cpp
 
-cmake --preset release -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
+# The shared Actions cache was produced by a different canonical checkout path
+# (ogs-upstream).  Keep CPM_SOURCE_CACHE, but force CMake to discard any stale
+# path-bound CMakeCache.txt before configuring this isolated A4B checkout.
+cmake --preset release --fresh -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON -DOGS_USE_MFRONT=ON '-DOGS_BUILD_PROCESSES=SmallDeformation'
 cmake --build --preset release --target ProcessLib SmallDeformation ogs --parallel 2
 
 cat > staged-a4b-evidence.txt <<EOF
