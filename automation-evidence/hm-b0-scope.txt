@@ -1,0 +1,29 @@
+OGS-STAGED-CONSTRUCTION-HM-B0 — SCOPE / GATE CONTRACT
+
+Base mechanical authority:
+- Activation/Backfill branch: agent/ogs-staged-construction-activation-a0
+- A4L strong-contrast mechanics verdict: PASS by authoritative Run #110 evidence
+- Canonical upstream OGS SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+
+HM-B0 objective:
+Extend the staged-construction lifecycle to HydroMechanics without changing the mechanical A4L semantics.
+
+Required semantics:
+1. Construction substeps must not advance physical time.
+2. Deactivation removes both mechanical and hydraulic/storage/flux contributions of the inactive domain consistently.
+3. Reactivation/backfill restores both displacement and liquid-pressure operators for the new domain.
+4. Mechanical birth configuration uses the last converged displacement as stress-free reference unless an explicit placement state overrides it.
+5. Hydraulic placement state is explicit and multiphysics-ready; liquid pressure and related storage state must never be inherited accidentally from the pre-excavation material.
+6. Fresh MFront/MGIS constitutive state remains mandatory on material reassignment/reactivation.
+7. Full physical operator at birth; no artificial stiffness-to-zero homotopy.
+8. Global construction disequilibrium is solved adaptively at constant physical time.
+9. Deterministic E2E must cover active HM material -> inactive/void -> reactivated/backfill HM domain and verify displacement, liquid pressure, hydraulic/storage contribution removal/restoration, and no stale constitutive state.
+10. Literature-first debugging: before introducing new numerical machinery, check established staged-construction/element-birth treatment in Abaqus, PLAXIS, FLAC3D and peer-reviewed coupled HM literature.
+
+Out of scope for HM-B0:
+- TRM/THM
+- TH2M
+- EmbeddedBeam / Anchor integration
+- ACTPLAS or unrelated structural-element work
+- canonical upstream SHA changes
+- merge to any authority branch
