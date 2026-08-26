@@ -5,7 +5,8 @@ root = Path.cwd()
 
 # A4I: diagnostic constitutive birth-deformation homotopy. A4L below removes
 # this experimental scaling after using the deterministic A4G/A4J stack as
-# stable landmarks.
+# stable landmarks. A4M in A4D now also guarantees that a successful activation
+# birth increment is committed exactly once by the normal physical timestep.
 la = root / "ProcessLib/SmallDeformation/LocalAssemblerInterface.h"
 text = la.read_text(encoding="utf-8")
 anchor = '''    double activationContributionScale() const
