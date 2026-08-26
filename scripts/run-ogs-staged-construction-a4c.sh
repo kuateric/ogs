@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# A4J canonical-branch-scoped semantic anchor validation trigger.
+# A4J general-path deferred-activation validation trigger.
 
 OGS_UPSTREAM_URL="${OGS_UPSTREAM_URL:-https://github.com/Helmholtz-UFZ/ogs.git}"
 OGS_UPSTREAM_SHA="${OGS_UPSTREAM_SHA:-adf770974c7ee0435702fe617634d03d17ab7cb8}"
