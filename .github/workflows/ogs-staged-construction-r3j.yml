@@ -11,6 +11,7 @@ on:
       - 'scripts/run-ogs-staged-construction-a4b.sh'
       - 'scripts/ogs-staged-construction-a4b.py'
       - 'scripts/run-ogs-staged-construction-a4c.sh'
+      - 'scripts/ogs-staged-construction-a4i.py'
   workflow_dispatch:
 
 permissions:
