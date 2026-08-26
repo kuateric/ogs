@@ -23,5 +23,58 @@ if text.count(old_guard) != 1:
     raise RuntimeError("Unexpected A4J no-support guard source layout")
 text = text.replace(old_guard, new_guard)
 
+# Run #94 proved that the strong-contrast case does not reach the no-support
+# branch at the activation instant.  A3 also assigns material identity in the
+# general moving-domain transition path, and that path was still publishing the
+# newborn elements before the physical baseline solve.  Teach the A4J patch to
+# defer activation there as well.  Any simultaneously newly deactivated cells
+# remain deactivated in the physical baseline; only newborn cells are held back.
+source_insert_anchor = '''# Publish the deferred event only after the inactive physical baseline has\n# converged. Material reassignment is deliberately performed here, immediately\n'''
+general_patch_source = r'''# The general lifecycle path can also contain inactive->active transitions.
+# Split those from the physical-time solve exactly like the no-support path.
+general_anchor = '''    _last_domain_transition = StagedConstruction::determineDomainTransition(
+        previous_is_active, current_is_active);
+    apply_activation_material_assignments(_last_domain_transition);
+    _ids_of_active_elements = _last_domain_transition.active_element_ids;
+'''
+general_replacement = '''    auto const target_transition =
+        StagedConstruction::determineDomainTransition(previous_is_active,
+                                                      current_is_active);
+
+    if (!target_transition.newly_activated_element_ids.empty())
+    {
+        // The physical t_{n+1} baseline must retain the old inactive topology
+        // for newborn cells.  Newly deactivated cells, if any, remain applied.
+        auto baseline_is_active = current_is_active;
+        for (auto const element_id :
+             target_transition.newly_activated_element_ids)
+        {
+            baseline_is_active[element_id] = 0u;
+        }
+
+        _pending_activation_transition = target_transition;
+        _last_domain_transition =
+            StagedConstruction::determineDomainTransition(previous_is_active,
+                                                          baseline_is_active);
+        std::copy(std::begin(baseline_is_active), std::end(baseline_is_active),
+                  std::begin(*_is_active));
+        _ids_of_active_elements = _last_domain_transition.active_element_ids;
+        return;
+    }
+
+    _last_domain_transition = target_transition;
+    apply_activation_material_assignments(_last_domain_transition);
+    _ids_of_active_elements = _last_domain_transition.active_element_ids;
+'''
+if text.count(general_anchor) != 1:
+    raise RuntimeError("Unexpected A3 general activation transition branch")
+text = text.replace(general_anchor, general_replacement)
+
+'''
+if text.count(source_insert_anchor) != 1:
+    raise RuntimeError("Unexpected A4J source insertion anchor")
+text = text.replace(source_insert_anchor,
+                    general_patch_source + source_insert_anchor)
+
 p.write_text(text, encoding="utf-8")
-print("Hardened A4J lifecycle and no-support branch anchors")
+print("Hardened A4J lifecycle and deferred both no-support and general activation paths")
