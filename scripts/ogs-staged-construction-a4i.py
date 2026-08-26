@@ -63,6 +63,43 @@ fem.write_text(text.replace(old, new), encoding="utf-8")
 
 print("Applied OGS Staged Construction A4I constitutive birth-deformation homotopy")
 
+# A4K ordering correction. A4J demonstrated that an inactive physical baseline
+# at t_{n+1} can itself fail before a strong-contrast backfill is published.
+# Once updateDeactivatedSubdomains() has recorded a pending activation, publish
+# it before the ordinary physical nonlinear solve and reuse A4D's existing
+# pre-solve adaptive activation continuation. A4J adds the pending-publication
+# API later in the patch sequence; the final translation unit sees that API.
+time_loop = root / "ProcessLib/TimeLoop.cpp"
+text = time_loop.read_text(encoding="utf-8")
+solve_anchor = '''    NumLib::NonlinearSolverStatus nonlinear_solver_status;
+
+    if (!process_data.process.hasPendingPreSolveConstructionSubsteps())
+'''
+solve_replacement = '''    // A4K: birth must precede physical advancement of an unsupported cavity.
+    // Publish from the last converged placement configuration, then A4D opens
+    // the first activation trial before the ordinary physical solve.
+    if (process_data.process.hasPendingActivationPublication(
+            process_data.process_id))
+    {
+        INFO(
+            "Staged construction pre-physical activation publication for "
+            "process #{:d} at activation time t = {:g}.",
+            process_data.process_id, t());
+        process_data.process.publishPendingActivation(
+            x, t(), dt, process_data.process_id);
+    }
+
+    NumLib::NonlinearSolverStatus nonlinear_solver_status;
+
+    if (!process_data.process.hasPendingPreSolveConstructionSubsteps())
+'''
+if text.count(solve_anchor) != 1:
+    raise RuntimeError("Unexpected A4D solveMonolithicProcess layout for A4K")
+time_loop.write_text(text.replace(solve_anchor, solve_replacement, 1),
+                     encoding="utf-8")
+
+print("Applied OGS Staged Construction A4K pre-physical activation ordering")
+
 # A4J is intentionally NOT chained here. The authoritative runner applies A4J
 # as its own explicit stage immediately after A4I. Chaining it here would apply
 # the same patch twice and make the second invocation fail its idempotency guard.
