@@ -1,0 +1,40 @@
+OGS-STAGED-CONSTRUCTION-A4L — AUTHORITATIVE NUMERICAL VERDICT
+
+Verdict: PASS — stress-free birth / full-physics strong-contrast E2E
+
+Canonical upstream OGS SHA:
+adf770974c7ee0435702fe617634d03d17ab7cb8
+
+Authoritative execution:
+- Workflow: OGS-STAGED-CONSTRUCTION-R3J
+- Run: #110
+- Run id: 33018451429
+- Executed head: 6dfc11f01afedd4081923309b5f9249f03ef4a69
+- A4C/A4L artifact id: 9625890109
+- Artifact digest: sha256:06614d392a6317d7900ae66fbb8e3c5eab3d5aea7506fd6535e47eaf08947785
+
+Numerical evidence recovered from a4c-strong-B.log:
+- Strong contrast: MFront_A E=4 GPa -> inactive/void -> MFront_B E=1 GPa
+- Full backfill horizon reached: t=8.0
+- Accepted physical timesteps: 37
+- Rejected physical timesteps: 0
+- A4L stress-free full-physical births: 20
+- Activation publications: 20
+- Full-physics pre-solve trials (lambda=1): 20
+- Excavation/removal construction transition completed: 1
+- MFront integration failures: 0
+- Simulation completed normally.
+
+CI classification note:
+Run #110's legacy A4C job concluded FAILURE only because scripts/run-ogs-staged-construction-a4c.sh still required the superseded A4J marker `Staged construction inactive baseline completed for process`. A4L intentionally removed that inactive-baseline ordering and instead publishes the stress-free birth with the full physical operator before the physical solve. The executed numerical log contains zero inactive-baseline markers but contains all A4L markers and reaches t=8 without constitutive failure. Therefore the CI failure is an evidence-contract mismatch, not a numerical failure.
+
+The follow-up A4L evidence adapter and workflow require the A4L full-physics semantics explicitly and do not weaken the numerical gate.
+
+Phase A status after this verdict:
+- A2 Excavation -> Backfill E2E: PASS where previously frozen authoritative evidence exists.
+- A3 MFront_A -> inactive/void -> MFront_B fresh-state material reassignment: PASS.
+- A4A explicit placement-state contract: PASS.
+- A4B controlled activation runtime/build gate: PASS.
+- A4L strong-contrast stress-free-birth full-physics E2E: PASS by Run #110 execution evidence above.
+
+No merge performed.
