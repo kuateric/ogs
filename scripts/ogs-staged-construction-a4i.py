@@ -100,6 +100,83 @@ time_loop.write_text(text.replace(solve_anchor, solve_replacement, 1),
 
 print("Applied OGS Staged Construction A4K pre-physical activation ordering")
 
+# A4L — literature-guided full stress-free birth.
+# Abaqus full progressive activation defines the configuration at activation as
+# the stress-free reference configuration. The material then enters with its
+# full physical operator; the reference configuration, rather than a fractional
+# stiffness/residual/strain multiplier, prevents spurious birth stress. A4C and
+# A4F already provide the corresponding OGS semantics (u_birth reference and
+# fresh MFront history). Remove the experimental A4E/A4I operator homotopies and
+# use one full-physics construction trial at unchanged physical time.
+la = root / "ProcessLib/SmallDeformation/LocalAssemblerInterface.h"
+text = la.read_text(encoding="utf-8")
+old = '''    double activationConstitutiveKinematicScale() const
+    {
+        // Once the birth physical step has completed the material owns normal
+        // placement-relative kinematics and no construction scaling applies.
+        return activation_birth_step_ ? activation_contribution_scale_ : 1.0;
+    }
+'''
+new = '''    double activationConstitutiveKinematicScale() const
+    {
+        // A4L: full activation uses physical placement-relative kinematics from
+        // birth. The captured placement configuration defines zero strain.
+        return 1.0;
+    }
+'''
+if text.count(old) != 1:
+    raise RuntimeError("Unexpected A4I constitutive kinematic scale block for A4L")
+la.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+fem = root / "ProcessLib/SmallDeformation/SmallDeformationFEM.h"
+text = fem.read_text(encoding="utf-8")
+old = '''        // Placement-regularized activation homotopy.  Scaling residual and
+        // tangent by the same lambda would cancel lambda from the Newton
+        // correction and would make newborn DOFs arbitrarily soft.  Keep the
+        // full material tangent as kinematic support while ramping only the
+        // activation driving residual.  At lambda=1 this is exactly the
+        // physical SmallDeformation system.
+        auto const activation_scale = this->activationContributionScale();
+        local_b *= activation_scale;
+'''
+new = '''        // A4L stress-free birth: assemble the full physical residual and
+        // consistent tangent. The newborn material is stress free because its
+        // strain is measured from the captured placement configuration.
+'''
+if text.count(old) != 1:
+    raise RuntimeError("Unexpected A4E activation residual homotopy for A4L")
+fem.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+sd_cpp = root / "ProcessLib/SmallDeformation/SmallDeformationProcess.cpp"
+text = sd_cpp.read_text(encoding="utf-8")
+old = '''        staged_construction_activation_transition_ = std::make_unique<
+            StagedConstruction::ActivationTransition>();
+
+        // Placement begins contribution-free. The existing TimeLoop
+        // construction driver advances this scale at unchanged physical time.
+        GlobalExecutor::executeSelectedMemberOnDereferenced(
+            &LocalAssemblerInterface::setActivationContributionScale,
+            local_assemblers_, staged_construction_activation_element_ids_, 0.0);
+'''
+new = '''        // A4L: full stress-free birth in one construction trial. The fresh
+        // constitutive state and placement reference carry the birth semantics;
+        // no fictitious fractional material operator is used.
+        staged_construction_activation_transition_ = std::make_unique<
+            StagedConstruction::ActivationTransition>(1.0);
+        GlobalExecutor::executeSelectedMemberOnDereferenced(
+            &LocalAssemblerInterface::setActivationContributionScale,
+            local_assemblers_, staged_construction_activation_element_ids_, 1.0);
+        INFO(
+            "A4L stress-free birth: full physical operator published for {:d} "
+            "newly activated elements.",
+            staged_construction_activation_element_ids_.size());
+'''
+if text.count(old) != 1:
+    raise RuntimeError("Unexpected A4B activation initialization for A4L")
+sd_cpp.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+print("Applied OGS Staged Construction A4L stress-free birth full physical operator")
+
 # A4J is intentionally NOT chained here. The authoritative runner applies A4J
 # as its own explicit stage immediately after A4I. Chaining it here would apply
 # the same patch twice and make the second invocation fail its idempotency guard.
