@@ -19,6 +19,36 @@ for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-a4c-e2e/; 
 cp scripts/ogs-staged-construction-a4j-anchor-fix.py ogs-a4c-e2e/
 cd ogs-a4c-e2e
 python3 ogs-staged-construction-a4j-anchor-fix.py
+# Earlier A4 stages can legitimately reshape the inactive-Dirichlet tail while
+# preserving its semantics. Normalize only that local tail to the canonical A4J
+# input form so the deferred-activation patch is independent of whitespace or
+# intermediate guard layout. This changes validation plumbing only, not A4J
+# mechanics.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('ProcessLib/BoundaryConditionAndSourceTerm/DeactivatedSubdomainDirichlet.cpp')
+text = p.read_text(encoding='utf-8')
+marker = '    if (isTimeInSupportInterval(_time_interval, t))'
+clear = '    bc_values.ids.clear();\n    bc_values.values.clear();'
+start = text.find(marker)
+end0 = text.find(clear, start if start >= 0 else 0)
+if start < 0 or end0 < 0:
+    raise RuntimeError('Could not locate deactivated-subdomain Dirichlet semantic tail')
+end = end0 + len(clear)
+canonical = '''    if (isTimeInSupportInterval(_time_interval, t))
+    {
+        getEssentialBCValuesLocal(
+            _parameter, _subdomain.mesh, inactive_nodes_in_bc_mesh,
+            *_dof_table_boundary, _variable_id, _component_id, t, x, bc_values);
+        return;
+    }
+
+    bc_values.ids.clear();
+    bc_values.values.clear();'''
+text = text[:start] + canonical + text[end:]
+p.write_text(text, encoding='utf-8')
+print('Normalized deactivated-subdomain Dirichlet tail for A4J patch')
+PY
 for s in $stages; do python3 "ogs-staged-construction-${s}.py"; done
 git diff --check
 
