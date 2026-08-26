@@ -1,0 +1,50 @@
+name: OGS-STAGED-CONSTRUCTION-A4L
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-a4l.yml'
+      - 'scripts/run-ogs-staged-construction-a4l-evidence.sh'
+      - 'scripts/run-ogs-staged-construction-a4c.sh'
+      - 'scripts/ogs-staged-construction-a4l.py'
+      - 'scripts/ogs-staged-construction-a4i.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a4l-stress-free-birth-strong-contrast-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+      - name: Run authoritative A4L strong-contrast E2E
+        run: bash scripts/run-ogs-staged-construction-a4l-evidence.sh
+      - name: Freeze A4L evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-a4l-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4L_stress_free_birth_full_physics_strong_contrast_e2e\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4l-evidence/provenance.txt
+          cp ogs-a4c-e2e/staged-a4l-evidence.txt staged-construction-a4l-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B.log staged-construction-a4l-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B/time_linear_excavation.prj staged-construction-a4l-evidence/a4l-strong-B.prj 2>/dev/null || true
+      - name: Upload A4L evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-a4l-${{ github.sha }}
+          path: staged-construction-a4l-evidence
