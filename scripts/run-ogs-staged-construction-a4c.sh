@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # A4J general-path deferred-activation validation trigger.
+# Retrigger after fixing A4J generated-patcher quoting.
 
 OGS_UPSTREAM_URL="${OGS_UPSTREAM_URL:-https://github.com/Helmholtz-UFZ/ogs.git}"
 OGS_UPSTREAM_SHA="${OGS_UPSTREAM_SHA:-adf770974c7ee0435702fe617634d03d17ab7cb8}"
@@ -19,11 +20,6 @@ for s in $stages; do cp "scripts/ogs-staged-construction-${s}.py" ogs-a4c-e2e/; 
 cp scripts/ogs-staged-construction-a4j-anchor-fix.py ogs-a4c-e2e/
 cd ogs-a4c-e2e
 python3 ogs-staged-construction-a4j-anchor-fix.py
-# Earlier A4 stages can legitimately reshape the inactive-Dirichlet tail while
-# preserving its semantics. Normalize only that local tail to the canonical A4J
-# input form so the deferred-activation patch is independent of whitespace or
-# intermediate guard layout. This changes validation plumbing only, not A4J
-# mechanics.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('ProcessLib/BoundaryConditionAndSourceTerm/DeactivatedSubdomainDirichlet.cpp')
