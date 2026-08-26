@@ -1,0 +1,25 @@
+gate=A2_full_mfront_backfill_e2e
+verdict=PASS
+classification=PASS_BY_EXECUTION_EVIDENCE
+source_run_id=32751455364
+source_job_id=97509132492
+source_artifact_id=9530271427
+workflow_sha=8f7c163eb9dc19a6f741375137930d2052242590
+artifact_workflow_sha=be7db6c461f4054052baa296828af011e4300355
+upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
+mfront_behaviour=MohrCoulombAbboSloan
+construction_lambda_sequence=0.25,0.625,1
+construction_accepted_trials=3
+construction_rejected_trials=0
+construction_physical_time=1
+full_backfill_horizon_reached=1
+max_time=8
+accepted_time_steps=37
+rejected_time_steps=0
+simulation_completed=1
+ogs_completed=1
+mfront_integration_failure=0
+original_job_conclusion=failure
+original_failure_scope=postprocessing_horizon_parser_false_negative
+original_failure_stage=validate_plastic_backfill_evidence
+evidence_note=The authoritative artifact staged-a2.log reaches Time step #37 at Time: 8, reports 37 accepted and 0 rejected physical time steps, Simulation completed, OGS completed, a completed staged-construction transition with lambda 0.25 -> 0.625 -> 1 at unchanged t=1, and contains zero occurrences of 'MFront: integration failed'. The original red CI conclusion occurred only in the downstream horizon-evidence parser after the strict runtime checks.

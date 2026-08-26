@@ -1,0 +1,4 @@
+gate=A3_material_reassignment_build
+verdict=success
+workflow_sha=89a58eef2031377a52089c1d0f7e098e6df541ed
+upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8
