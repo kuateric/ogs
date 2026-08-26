@@ -11,7 +11,9 @@ on:
       - 'scripts/run-ogs-staged-construction-a4b.sh'
       - 'scripts/ogs-staged-construction-a4b.py'
       - 'scripts/run-ogs-staged-construction-a4c.sh'
+      - 'scripts/run-ogs-staged-construction-a4l-evidence.sh'
       - 'scripts/ogs-staged-construction-a4i.py'
+      - 'scripts/ogs-staged-construction-a4l.py'
   workflow_dispatch:
 
 permissions:
@@ -78,7 +80,7 @@ jobs:
           name: ogs-staged-construction-a4b-${{ github.sha }}
           path: staged-construction-a4b-evidence
 
-  a4c-strong-contrast-controlled-activation-e2e:
+  a4l-stress-free-birth-strong-contrast-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -96,22 +98,22 @@ jobs:
             build/release
             .cpm-cache
           key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
-      - name: Run A4C strong-contrast controlled activation E2E
-        run: bash scripts/run-ogs-staged-construction-a4c.sh
-      - name: Freeze A4C evidence
+      - name: Run authoritative A4L strong-contrast E2E
+        run: bash scripts/run-ogs-staged-construction-a4l-evidence.sh
+      - name: Freeze A4L evidence
         if: always()
         run: |
-          mkdir -p staged-construction-a4c-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4C_strong_contrast_controlled_activation_e2e\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4c-evidence/provenance.txt
-          cp ogs-a4c-e2e/staged-a4c-evidence.txt staged-construction-a4c-evidence/ 2>/dev/null || true
-          cp ogs-a4c-e2e/a4c-strong-B.log staged-construction-a4c-evidence/ 2>/dev/null || true
-          cp ogs-a4c-e2e/a4c-strong-B/time_linear_excavation.prj staged-construction-a4c-evidence/a4c-strong-B.prj 2>/dev/null || true
-      - name: Upload A4C evidence
+          mkdir -p staged-construction-a4l-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=A4L_stress_free_birth_full_physics_strong_contrast_e2e\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-a4l-evidence/provenance.txt
+          cp ogs-a4c-e2e/staged-a4l-evidence.txt staged-construction-a4l-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B.log staged-construction-a4l-evidence/ 2>/dev/null || true
+          cp ogs-a4c-e2e/a4c-strong-B/time_linear_excavation.prj staged-construction-a4l-evidence/a4l-strong-B.prj 2>/dev/null || true
+      - name: Upload A4L evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-staged-construction-a4c-${{ github.sha }}
-          path: staged-construction-a4c-evidence
+          name: ogs-staged-construction-a4l-${{ github.sha }}
+          path: staged-construction-a4l-evidence
 
   a3-material-reassignment-e2e:
     runs-on: ubuntu-24.04
