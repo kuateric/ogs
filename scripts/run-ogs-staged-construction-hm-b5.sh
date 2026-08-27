@@ -57,10 +57,9 @@ if b is None:
 b.text = '0 -0.1'
 
 # Keep pressure placement/BCs uniform so B5 isolates loaded mechanical/HM
-# equilibrium restoration rather than introducing a hydraulic gradient.
-# IMPORTANT: the canonical parameter named "zero" is shared by the pressure
-# top boundary and the mechanical displacement Dirichlet conditions. Do not
-# overwrite it. Create a pressure-only 12345 Pa boundary parameter instead.
+# equilibrium restoration rather than introducing a prescribed hydraulic
+# gradient. IMPORTANT: the canonical parameter named "zero" is shared by the
+# pressure top boundary and mechanical Dirichlet conditions; never overwrite it.
 parameters = root.find('./parameters')
 if parameters is None:
     raise RuntimeError('parameters block not found')
@@ -72,13 +71,39 @@ ET.SubElement(pressure_bc_parameter, 'name').text = 'PlacementPressureBC'
 ET.SubElement(pressure_bc_parameter, 'type').text = 'Constant'
 ET.SubElement(pressure_bc_parameter, 'values').text = '12345'
 parameters.append(pressure_bc_parameter)
-pressure_bcs = pressure.findall('./boundary_conditions/boundary_condition')
-if not pressure_bcs:
-    raise RuntimeError('pressure boundary condition not found')
-for bc in pressure_bcs:
+pressure_bcs = pressure.find('./boundary_conditions')
+if pressure_bcs is None:
+    raise RuntimeError('pressure boundary_conditions not found')
+for bc in pressure_bcs.findall('./boundary_condition'):
     param = bc.find('parameter')
     if param is not None and param.text and param.text.strip() == 'zero':
         param.text = 'PlacementPressureBC'
+
+# The canonical HydraulicDeactivation fixture is a hydraulic-only regression.
+# Once its material 1/3 regions are also removed mechanically, the active HM
+# domain can contain hydraulically disconnected components. With incompressible
+# constituents, an unanchored component carries a pressure null mode; zero-load
+# B2-B4 can hide that algebraically, while any non-zero body force exposes it.
+# B5 is an equilibrium-restoration gate, not a pressure-gauge test, so anchor
+# every available exterior boundary to the same absolute placement pressure.
+# This keeps zero hydraulic gradient at placement, preserves the full Darcy/
+# storage/Biot operator, and makes every exterior-connected active component
+# pressure-well-posed without adding any artificial material stiffness.
+existing_pressure_meshes = {
+    bc.findtext('mesh').strip()
+    for bc in pressure_bcs.findall('./boundary_condition')
+    if bc.findtext('mesh')
+}
+for mesh_name in (
+    'unit_square_top', 'unit_square_bottom',
+    'unit_square_left', 'unit_square_right'
+):
+    if mesh_name in existing_pressure_meshes:
+        continue
+    bc = ET.SubElement(pressure_bcs, 'boundary_condition')
+    ET.SubElement(bc, 'mesh').text = mesh_name
+    ET.SubElement(bc, 'type').text = 'Dirichlet'
+    ET.SubElement(bc, 'parameter').text = 'PlacementPressureBC'
 
 # Assert that mechanical zero Dirichlet conditions remain exactly zero-valued.
 zero_par = next((par for par in root.findall('./parameters/parameter')
@@ -158,6 +183,7 @@ Path('../hm-b5-evidence.txt').write_text(
     f'placement_elements={placement_ids}\n'
     'explicit_p_L0=12345\n'
     'pressure_bc_parameter=PlacementPressureBC\n'
+    'hydraulic_gauge_all_outer_boundaries=true\n'
     'mechanical_zero_bc_preserved=true\n'
     'specific_body_force=0,-0.1\n'
     f'max_t2_displacement_newton_correction={max(abs(v) for v in dx):.17g}\n'
