@@ -1,0 +1,48 @@
+OGS Staged Construction TRM-T0 — Coupled Lifecycle Scope
+
+Canonical OGS authority SHA:
+adf770974c7ee0435702fe617634d03d17ab7cb8
+
+Target process:
+ProcessLib/ThermoRichardsMechanics
+THERMO_RICHARDS_MECHANICS
+
+Canonical monolithic primary-variable order:
+1. temperature
+2. pressure
+3. displacement
+
+T0 freezes contract only. It does not change canonical process mechanics.
+
+Required true-void lifecycle scope:
+- mechanics
+- storage / Richards liquid balance
+- Darcy flux
+- thermal storage
+- heat conduction
+- thermo-hydro-mechanical coupling
+
+Required birth placement state:
+- displacement_reference = last converged displacement configuration
+- liquid_pressure = explicit absolute p_L,0
+- temperature = explicit absolute T_0
+- fresh_constitutive_state = true
+
+Construction continuation must not advance physical time.
+Full physical operators are present immediately after birth; no stiffness,
+residual, strain, thermal-conductivity, or permeability homotopy is authorized.
+
+Evidence basis in canonical source:
+- CreateThermoRichardsMechanicsProcess.cpp declares monolithic variables
+  temperature, pressure, displacement.
+- ThermoRichardsMechanicsProcess.cpp calls updateActiveElements() in
+  preTimestepConcreteProcess().
+- postTimestepConcreteProcess() commits selected active local assemblers only.
+- OGS_USE_MFRONT instantiates the pressure-temperature-sensitive TRM
+  constitutive subtype, so fresh-state safety remains a hard requirement.
+
+Next gates after T0 PASS:
+T1 canonical/runtime coupled-deactivation probe
+T2 fresh thermo-hydro-mechanical birth state
+T3 explicit {u_birth, p_L,0, T_0} placement state
+T4 loaded TRM material-reassignment E2E
