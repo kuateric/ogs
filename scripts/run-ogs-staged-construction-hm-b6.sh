@@ -34,8 +34,15 @@ ds=pr.find('deactivated_subdomains')
 mid=ds.find('./deactivated_subdomain/material_ids'); mid.text='3 4'
 ET.SubElement(ds.find('./deactivated_subdomain'),'activation_material_id').text='5'
 du.insert(list(du).index(du.find('initial_condition'))+1,deepcopy(ds))
-# second constitutive relation for newborn backfill
+# Once more than one constitutive relation exists, OGS resolves by exact
+# MaterialID. Preserve the original material A law for every pre-existing mesh
+# id (0..4), and add material B only for the newborn backfill id 5.
 proc=r.find('./processes/process')
+base_cr=proc.find("./constitutive_relation[@id='0']")
+for material_id in ('1','2','3','4'):
+    cr_a=deepcopy(base_cr)
+    cr_a.set('id',material_id)
+    proc.append(cr_a)
 cr=ET.SubElement(proc,'constitutive_relation',{'id':'5'})
 ET.SubElement(cr,'type').text='LinearElasticIsotropic'
 ET.SubElement(cr,'youngs_modulus').text='E_B'
