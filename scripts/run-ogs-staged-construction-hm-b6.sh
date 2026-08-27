@@ -17,6 +17,7 @@ python3 "$ROOT/scripts/ogs-staged-construction-hm-b2.py"
 python3 "$ROOT/scripts/ogs-staged-construction-hm-b3.py"
 python3 "$ROOT/scripts/ogs-staged-construction-hm-b4.py"
 python3 "$ROOT/scripts/ogs-staged-construction-hm-b6.py"
+python3 "$ROOT/scripts/ogs-staged-construction-hm-b6-compile-fix.py"
 git diff --check
 cmake --preset release --fresh -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON '-DOGS_BUILD_PROCESSES=HydroMechanics'
 cmake --build --preset release --target ProcessLib HydroMechanics ogs --parallel 2
