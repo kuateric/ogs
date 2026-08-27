@@ -55,8 +55,7 @@ new = r'''    // HM-B2 coupled lifecycle semantics: an element contributes to a
         }
 
         std::vector<std::size_t> new_active_elements;
-        new_active_elements.reserve(std::min(_ids_of_active_elements.size(),
-                                             pv_active_element_ids.size()));
+        new_active_elements.reserve(_ids_of_active_elements.size());
         ranges::set_intersection(_ids_of_active_elements,
                                  pv_active_element_ids,
                                  std::back_inserter(new_active_elements));
