@@ -32,33 +32,25 @@ old = r'''    auto active_elements_ids = ranges::views::transform(
         _ids_of_active_elements = std::move(new_active_elements);
     }
 '''
-new = r'''    auto active_elements_ids = ranges::views::transform(
-        [](auto const& variable)
-        { return variable.get().getActiveElementIDs(); });
-
-    // HM-B2 coupled lifecycle semantics: an element contributes to a
+new = r'''    // HM-B2 coupled lifecycle semantics: an element contributes to a
     // monolithic coupled operator only if it is active for every variable that
     // owns a staged-construction restriction. An empty active-id vector means
-    // that the variable has no active restriction at the current time and must
-    // therefore act as the identity set, not as a veto that re-enables the
-    // entire coupled domain.
-    auto first_restricted = ranges::find_if(
-        variables_per_process | active_elements_ids,
-        [](auto const& vector) { return !vector.empty(); });
-
-    if (first_restricted == ranges::end(variables_per_process |
-                                       active_elements_ids))
+    // that the variable has no active restriction at the current time and acts
+    // as the identity set; it must not re-enable the entire coupled domain.
+    bool have_restricted_variable = false;
+    for (auto const& variable : variables_per_process)
     {
-        return;  // no variable restricts the domain: all elements are active.
-    }
-
-    _ids_of_active_elements = *first_restricted;
-
-    for (auto const& pv_active_element_ids :
-         variables_per_process | active_elements_ids)
-    {
+        auto const& pv_active_element_ids =
+            variable.get().getActiveElementIDs();
         if (pv_active_element_ids.empty())
         {
+            continue;
+        }
+
+        if (!have_restricted_variable)
+        {
+            _ids_of_active_elements = pv_active_element_ids;
+            have_restricted_variable = true;
             continue;
         }
 
@@ -69,6 +61,13 @@ new = r'''    auto active_elements_ids = ranges::views::transform(
                                  pv_active_element_ids,
                                  std::back_inserter(new_active_elements));
         _ids_of_active_elements = std::move(new_active_elements);
+    }
+
+    // No process variable currently restricts the domain. Empty means all
+    // elements active, preserving the established Process contract.
+    if (!have_restricted_variable)
+    {
+        return;
     }
 '''
 if text.count(old) != 1:
