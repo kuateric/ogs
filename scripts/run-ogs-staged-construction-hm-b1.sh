@@ -14,8 +14,11 @@ git checkout --detach FETCH_HEAD
 test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 
 # Runtime evidence only: instrument the existing canonical HM assembler so the
-# executed log proves when a coupled element participates in assembly. The
-# assembled call contains mechanics, Biot coupling, storage and Darcy blocks.
+# executed log proves when a coupled element participates in assembly. This B1
+# gate intentionally applies NO staged-construction HM fix. It freezes the
+# upstream limitation that a pressure-only deactivated_subdomains declaration
+# does not shrink the monolithic HM operator while displacement is unrestricted.
+# HM-B2 is the separate positive gate for the corrected synchronized lifecycle.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('ProcessLib/HydroMechanics/HydroMechanicsFEM-impl.h')
@@ -42,7 +45,9 @@ cmake --preset release --fresh \
 cmake --build --preset release --target ProcessLib HydroMechanics ogs --parallel 2
 
 # Start from the canonical HM deactivation regression and extend the horizon so
-# the material IDs deactivated over [0,1] are assembled again after the interval.
+# the pressure-only support interval [0,1] can be compared to t=2. The purpose
+# here is to prove the unchanged canonical coupled-active-domain limitation,
+# not to validate the HM-B2 fix.
 cp -a Tests/Data/HydroMechanics/HydraulicDeactivation hm-b1-case
 python3 - <<'PY'
 from pathlib import Path
@@ -60,7 +65,6 @@ if t_end is None or pair is None or pair.find('repeat') is None or pair.find('de
 t_end.text = '2.0'
 pair.find('repeat').text = '2'
 pair.find('delta_t').text = '1.0'
-# Preserve exact deactivation interval [0,1]; t=2 is therefore reactivated.
 tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
 PY
 
@@ -73,7 +77,7 @@ rc=$?
 set -e
 cat hm-b1.log
 if [ "$rc" -ne 0 ]; then
-  echo "HM-B1 canonical coupled deactivation/reactivation probe failed with rc=$rc" >&2
+  echo "HM-B1 canonical coupled limitation probe failed to execute with rc=$rc" >&2
   exit "$rc"
 fi
 
@@ -90,24 +94,32 @@ if not records:
 by_time = {}
 for e, t in records:
     by_time.setdefault(round(t, 12), set()).add(e)
-# The canonical case deactivates material IDs 1 and 3 on the pressure variable
-# during [0,1]. The key runtime requirement for this B1 probe is that the active
-# coupled assembly topology changes and that additional elements return after
-# the support interval, proving the generic active-domain machinery reaches HM.
 active_t1 = by_time.get(1.0, set())
 active_t2 = by_time.get(2.0, set())
 if not active_t1 or not active_t2:
     raise RuntimeError(f'missing HM assembly snapshots: t1={len(active_t1)} t2={len(active_t2)}')
-if not (active_t2 - active_t1):
+
+# Canonical upstream finding: pressure alone owns deactivated_subdomains, while
+# displacement is unrestricted. The current Process active-set union/early-return
+# semantics therefore leave the entire monolithic HM assembly active. Freeze this
+# as an expected negative reference. If upstream behavior changes, this gate must
+# fail so B2 can be revisited rather than silently becoming redundant.
+if active_t1 != active_t2:
     raise RuntimeError(
-        f'expected reactivated HM elements after deactivation interval; '
+        'canonical HM coupled-active-domain behavior changed unexpectedly: '
         f't1={sorted(active_t1)}, t2={sorted(active_t2)}')
+if len(active_t1) != 15:
+    raise RuntimeError(
+        'expected all 15 canonical HM elements to remain assembled under the '
+        f'pressure-only restriction, got {sorted(active_t1)}')
+
 Path('../hm-b1-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
-    'gate=HM_B1_canonical_coupled_deactivation_reactivation_probe\n'
+    'gate=HM_B1_canonical_coupled_deactivation_limitation\n'
     f'active_elements_t1={sorted(active_t1)}\n'
     f'active_elements_t2={sorted(active_t2)}\n'
-    f'reactivated_elements={sorted(active_t2-active_t1)}\n'
+    'canonical_pressure_only_deactivation_does_not_shrink_monolithic_operator=true\n'
+    'corrected_positive_gate=HM_B2\n'
     'physical_time_horizon=2.0\n'
     'runtime_exit=0\n',
     encoding='utf-8')
