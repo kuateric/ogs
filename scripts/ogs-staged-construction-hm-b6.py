@@ -56,28 +56,49 @@ pv.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
 
 # 3. HydroMechanics IntegrationPointData historically stores a permanent
 # reference to the material selected when the local assembler is constructed.
-# Make it rebindable. Fresh birth then selects the current MaterialID first and
-# creates state variables from that material, which is essential for MFront/MGIS
-# because state layouts can differ across behaviours.
+# Make that binding reassignable while keeping constructor-time state creation
+# on the original reference. At activation the current MaterialID is resolved,
+# the pointer is rebound, and a fresh state is created from the new material.
 fem = root / "ProcessLib/HydroMechanics/HydroMechanicsFEM.h"
 text = fem.read_text(encoding="utf-8")
-text = text.replace('''        : solid_material(solid_material),\n          material_state_variables(\n              solid_material.createMaterialStateVariables())\n''', '''        : solid_material(&solid_material),\n          material_state_variables(\n              solid_material.createMaterialStateVariables())\n''', 1)
-text = text.replace(
-    '''    MaterialLib::Solids::MechanicsBase<DisplacementDim> const& solid_material;\n''',
-    '''    MaterialLib::Solids::MechanicsBase<DisplacementDim> const* solid_material;\n''', 1)
-# IntegrationPointData methods must dereference the rebindable material.
-text = text.replace('solid_material.createMaterialStateVariables()',
-                    'solid_material->createMaterialStateVariables()')
-text = text.replace('solid_material.initializeInternalStateVariables(',
-                    'solid_material->initializeInternalStateVariables(')
-text = text.replace('solid_material.integrateStress(',
-                    'solid_material->integrateStress(')
 
-# B3 added the birth hook. Replace it with B6 material rebinding + fresh state.
+old = '''        : solid_material(solid_material),\n          material_state_variables(\n              solid_material.createMaterialStateVariables())\n'''
+new = '''        : solid_material(&solid_material),\n          material_state_variables(\n              solid_material.createMaterialStateVariables())\n'''
+if text.count(old) != 1:
+    raise RuntimeError("unexpected HM-B6 IntegrationPointData constructor anchor")
+text = text.replace(old, new, 1)
+
+old = '''    MaterialLib::Solids::MechanicsBase<DisplacementDim> const& solid_material;\n'''
+new = '''    MaterialLib::Solids::MechanicsBase<DisplacementDim> const* solid_material;\n'''
+if text.count(old) != 1:
+    raise RuntimeError("unexpected HM-B6 solid material member anchor")
+text = text.replace(old, new, 1)
+
+for old, new, label in [
+    ('''        auto const null_state = solid_material.createMaterialStateVariables();\n''',
+     '''        auto const null_state = solid_material->createMaterialStateVariables();\n''',
+     "elastic null-state creation"),
+    ('''        solid_material.initializeInternalStateVariables(t, x_position,\n                                                        *null_state);\n''',
+     '''        solid_material->initializeInternalStateVariables(t, x_position,\n                                                         *null_state);\n''',
+     "internal-state initialization"),
+    ('''            solid_material.integrateStress(variable_array_prev, variable_array,\n                                           t, x_position, dt, *null_state);\n''',
+     '''            solid_material->integrateStress(variable_array_prev, variable_array,\n                                            t, x_position, dt, *null_state);\n''',
+     "elastic tangent integration"),
+    ('''        auto&& solution = solid_material.integrateStress(\n''',
+     '''        auto&& solution = solid_material->integrateStress(\n''',
+     "constitutive integration"),
+]:
+    if text.count(old) != 1:
+        raise RuntimeError(f"unexpected HM-B6 {label} anchor")
+    text = text.replace(old, new, 1)
+
+# B3+B4 own the fresh-state/reset/reference semantics. Replace only the first
+# line of that hook with material rebinding so B4's placement-reference fields
+# remain untouched. This avoids coupling B6 to the exact B4 evidence body.
 old = '''        for (auto& ip_data : _ip_data)\n        {\n            ip_data.material_state_variables =\n                ip_data.solid_material.createMaterialStateVariables();\n            ip_data.sigma_eff.setZero();\n'''
 new = '''        auto const& birth_material =\n            MaterialLib::Solids::selectSolidConstitutiveRelation(\n                _process_data.solid_materials, _process_data.material_ids,\n                element_id);\n\n        for (auto& ip_data : _ip_data)\n        {\n            ip_data.solid_material = &birth_material;\n            ip_data.material_state_variables =\n                birth_material.createMaterialStateVariables();\n            ip_data.sigma_eff.setZero();\n'''
 if text.count(old) != 1:
-    raise RuntimeError("unexpected HM-B6 B3 birth-state anchor")
+    raise RuntimeError("unexpected HM-B6 B3/B4 birth-state anchor")
 text = text.replace(old, new, 1)
 
 old = '''        INFO("HM-B3 fresh coupled birth state initialized for element {:d}",\n             element_id);\n'''
