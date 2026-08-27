@@ -1,0 +1,38 @@
+name: OGS-STAGED-CONSTRUCTION-TRM-T0
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-trm-t0-contract.py'
+      - '.github/workflows/ogs-staged-construction-trm-t0.yml'
+      - 'automation-evidence/trm-t0-scope.txt'
+  workflow_dispatch:
+
+jobs:
+  trm-t0-coupled-lifecycle-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical authority pin and process target
+        shell: bash
+        run: |
+          grep -q 'adf770974c7ee0435702fe617634d03d17ab7cb8' automation-evidence/trm-t0-scope.txt
+          grep -q 'ProcessLib/ThermoRichardsMechanics' automation-evidence/trm-t0-scope.txt
+          grep -q 'temperature' automation-evidence/trm-t0-scope.txt
+          grep -q 'pressure' automation-evidence/trm-t0-scope.txt
+          grep -q 'displacement' automation-evidence/trm-t0-scope.txt
+      - name: Run deterministic TRM lifecycle contract
+        run: python3 scripts/ogs-staged-construction-trm-t0-contract.py
+      - name: Verify coupled operator and placement-state scope
+        shell: bash
+        run: |
+          grep -q 'mechanics' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'storage' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'darcy_flux' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'thermal_storage' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'heat_conduction' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'thm_coupling' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'liquid_pressure' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'temperature' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'displacement_reference' scripts/ogs-staged-construction-trm-t0-contract.py
+          grep -q 'physical_time_before == physical_time_after' scripts/ogs-staged-construction-trm-t0-contract.py
