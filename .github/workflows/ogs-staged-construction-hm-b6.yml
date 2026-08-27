@@ -1,0 +1,45 @@
+name: OGS-STAGED-CONSTRUCTION-HM-B6
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-hm-b6.py'
+      - 'scripts/run-ogs-staged-construction-hm-b6.sh'
+      - '.github/workflows/ogs-staged-construction-hm-b6.yml'
+  workflow_dispatch:
+
+jobs:
+  hm-b6-material-reassignment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+      - name: Run HM-B6 material reassignment E2E
+        run: bash scripts/run-ogs-staged-construction-hm-b6.sh
+      - name: Freeze HM-B6 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-hm-b6-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=HM_B6_material_reassignment\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-hm-b6-evidence/provenance.txt
+          cp hm-b6-evidence.txt staged-construction-hm-b6-evidence/ 2>/dev/null || true
+          cp ogs-hm-b6/hm-b6.log staged-construction-hm-b6-evidence/ 2>/dev/null || true
+          cp ogs-hm-b6/hm-b6-case/simHM_deactivate_H.prj staged-construction-hm-b6-evidence/ 2>/dev/null || true
+      - name: Upload HM-B6 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-hm-b6-${{ github.sha }}
+          path: staged-construction-hm-b6-evidence
