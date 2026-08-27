@@ -12,6 +12,16 @@ git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
 git checkout --detach FETCH_HEAD
 test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 
+# HM-B3 consumes the persistent DomainTransition API that was already
+# authoritatively validated in the mechanical staged-construction stack. Keep
+# this deterministic evidence clone pinned to canonical upstream and compose
+# only the minimal direct dependencies: R0 defines DomainTransition and wires
+# transition detection, R2G persists the last transition for process-level
+# consumers. The unrelated mechanical removal-force stages are intentionally
+# not applied here.
+python3 ../scripts/ogs-staged-construction-r0.py
+python3 ../scripts/ogs-staged-construction-r2g.py
+
 # Reuse the already-authoritative HM-B2 active-domain semantics, then add the
 # fresh coupled birth-state hook. No unrelated process code is touched.
 python3 ../scripts/ogs-staged-construction-hm-b2.py
@@ -79,6 +89,7 @@ if len(unique) != 6:
 Path('../hm-b3-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
     'gate=HM_B3_fresh_coupled_birth_state\n'
+    'lifecycle_dependencies=R0,R2G\n'
     f'fresh_birth_elements={unique}\n'
     'fresh_solid_material_state=true\n'
     'birth_effective_stress_zero=true\n'
