@@ -12,17 +12,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Extract pinned canonical TRM sources
         shell: bash
         run: |
           set -euo pipefail
           authority=adf770974c7ee0435702fe617634d03d17ab7cb8
+          base="https://raw.githubusercontent.com/ufz/ogs/${authority}/ProcessLib/ThermoRichardsMechanics"
           mkdir -p /tmp/trm-t1a
-          git cat-file -e "$authority^{commit}"
-          git show "$authority:ProcessLib/ThermoRichardsMechanics/ThermoRichardsMechanicsProcess.cpp" > /tmp/trm-t1a/ThermoRichardsMechanicsProcess.cpp
-          git show "$authority:ProcessLib/ThermoRichardsMechanics/CreateThermoRichardsMechanicsProcess.cpp" > /tmp/trm-t1a/CreateThermoRichardsMechanicsProcess.cpp
+          curl --fail --silent --show-error --location \
+            "$base/ThermoRichardsMechanicsProcess.cpp" \
+            --output /tmp/trm-t1a/ThermoRichardsMechanicsProcess.cpp
+          curl --fail --silent --show-error --location \
+            "$base/CreateThermoRichardsMechanicsProcess.cpp" \
+            --output /tmp/trm-t1a/CreateThermoRichardsMechanicsProcess.cpp
+          test -s /tmp/trm-t1a/ThermoRichardsMechanicsProcess.cpp
+          test -s /tmp/trm-t1a/CreateThermoRichardsMechanicsProcess.cpp
       - name: Run canonical active-domain architecture probe
         run: >-
           python3 scripts/ogs-staged-construction-trm-t1a-canonical-active-domain-probe.py
