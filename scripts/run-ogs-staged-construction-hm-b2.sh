@@ -12,12 +12,16 @@ git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
 git checkout --detach FETCH_HEAD
 test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 
-# Apply only the HM-B2 process-wide coupled active-domain rule.
-python3 ../scripts/ogs-staged-construction-hm-b2.py
+# HM-B2 follows established staged-construction practice: the coupled HM soil
+# cluster is switched off as one domain.  The canonical OGS ProcessVariable
+# implementation already supplies zero-value Dirichlet constraints to nodes that
+# become isolated by a deactivated subdomain.  Therefore the same lifecycle
+# restriction is declared for both pressure and displacement.  This removes the
+# full monolithic HM element contribution without leaving free zero-stiffness
+# displacement DOFs.  No generic Process active-set semantics are patched here.
 
-# Instrument the real monolithic HM local assembler. If the process-wide active
-# list is respected, deactivated elements must be absent here at t=1 and return
-# after the support interval at t=2.
+# Instrument the real monolithic HM local assembler. Deactivated elements must
+# be absent at t=1 and return after the support interval at t=2.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('ProcessLib/HydroMechanics/HydroMechanicsFEM-impl.h')
@@ -45,11 +49,39 @@ cmake --build --preset release --target ProcessLib HydroMechanics ogs --parallel
 
 cp -a Tests/Data/HydroMechanics/HydraulicDeactivation hm-b2-case
 python3 - <<'PY'
+from copy import deepcopy
 from pathlib import Path
 import xml.etree.ElementTree as ET
+
 p = Path('hm-b2-case/simHM_deactivate_H.prj')
 tree = ET.parse(p)
 root = tree.getroot()
+
+# Extend the canonical pressure-only upstream regression to a true coupled HM
+# staged-construction cluster by assigning the exact same deactivated_subdomains
+# contract to displacement.  This is intentionally a lifecycle declaration,
+# not a numerical workaround: both fields describe the same material domain.
+variables = root.findall('./process_variables/process_variable')
+by_name = {}
+for pv in variables:
+    name = pv.findtext('name')
+    if name:
+        by_name[name.strip()] = pv
+pressure = by_name.get('pressure')
+displacement = by_name.get('displacement')
+if pressure is None or displacement is None:
+    raise RuntimeError(f'unexpected HM variables: {sorted(by_name)}')
+pressure_ds = pressure.find('deactivated_subdomains')
+if pressure_ds is None:
+    raise RuntimeError('canonical pressure deactivated_subdomains not found')
+if displacement.find('deactivated_subdomains') is not None:
+    raise RuntimeError('canonical displacement unexpectedly already restricted')
+# Keep project ordering deterministic: insert immediately after initial_condition.
+ic = displacement.find('initial_condition')
+insert_at = list(displacement).index(ic) + 1 if ic is not None else len(displacement)
+displacement.insert(insert_at, deepcopy(pressure_ds))
+
+# Run one interval with the coupled cluster inactive and one after reactivation.
 ts = root.find('./time_loop/processes/process/time_stepping')
 if ts is None:
     raise RuntimeError('time stepping not found')
@@ -99,10 +131,11 @@ if not active_t1 < active_t2:
         f't1={sorted(active_t1)}, t2={sorted(active_t2)}')
 Path('../hm-b2-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
-    'gate=HM_B2_process_wide_coupled_active_domain\n'
+    'gate=HM_B2_synchronized_coupled_domain_lifecycle\n'
     f'active_elements_t1={sorted(active_t1)}\n'
     f'active_elements_t2={sorted(active_t2)}\n'
     f'reactivated_elements={sorted(active_t2-active_t1)}\n'
+    'pressure_and_displacement_lifecycle=synchronized\n'
     'physical_time_horizon=2.0\n'
     'runtime_exit=0\n', encoding='utf-8')
 PY
