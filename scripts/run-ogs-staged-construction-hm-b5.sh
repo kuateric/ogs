@@ -43,6 +43,20 @@ displacement = by_name['displacement']
 pressure_ds = pressure.find('deactivated_subdomains')
 if pressure_ds is None or displacement.find('deactivated_subdomains') is not None:
     raise RuntimeError('unexpected canonical HM deactivation layout')
+
+# The canonical HydraulicDeactivation fixture removes alternating horizontal
+# layers 1 and 3. That is suitable for its original hydraulic-only regression,
+# but becomes mechanically ill-posed under body force when the same lifecycle
+# is synchronized to displacement: the remaining layers 2 and 4 are detached
+# from the bottom support and carry vertical rigid-body modes. HM-B5 is a loaded
+# construction-equilibrium gate, so use a physically connected excavation:
+# remove the two upper layers (materials 3 and 4), leave materials 0-2 connected
+# to the bottom support, then reactivate 3+4 as the six-element newborn region.
+material_ids = pressure_ds.find('./deactivated_subdomain/material_ids')
+if material_ids is None:
+    raise RuntimeError('canonical pressure material_ids not found')
+material_ids.text = '3 4'
+
 ic = displacement.find('initial_condition')
 insert_at = list(displacement).index(ic) + 1 if ic is not None else len(displacement)
 displacement.insert(insert_at, deepcopy(pressure_ds))
@@ -79,16 +93,9 @@ for bc in pressure_bcs.findall('./boundary_condition'):
     if param is not None and param.text and param.text.strip() == 'zero':
         param.text = 'PlacementPressureBC'
 
-# The canonical HydraulicDeactivation fixture is a hydraulic-only regression.
-# Once its material 1/3 regions are also removed mechanically, the active HM
-# domain can contain hydraulically disconnected components. With incompressible
-# constituents, an unanchored component carries a pressure null mode; zero-load
-# B2-B4 can hide that algebraically, while any non-zero body force exposes it.
-# B5 is an equilibrium-restoration gate, not a pressure-gauge test, so anchor
-# every available exterior boundary to the same absolute placement pressure.
-# This keeps zero hydraulic gradient at placement, preserves the full Darcy/
-# storage/Biot operator, and makes every exterior-connected active component
-# pressure-well-posed without adding any artificial material stiffness.
+# Anchor every available exterior hydraulic boundary to the same absolute
+# placement pressure. This keeps zero hydraulic gradient at placement and makes
+# B5 about loaded HM equilibrium restoration, not pressure-gauge selection.
 existing_pressure_meshes = {
     bc.findtext('mesh').strip()
     for bc in pressure_bcs.findall('./boundary_condition')
@@ -114,6 +121,12 @@ for bc in displacement.findall('./boundary_conditions/boundary_condition'):
     param = bc.findtext('parameter')
     if param != 'zero':
         raise RuntimeError(f'unexpected displacement BC parameter: {param}')
+
+# Assert the loaded fixture remains a connected top-excavation/backfill case.
+for pv in (pressure, displacement):
+    ids = pv.find('./deactivated_subdomains/deactivated_subdomain/material_ids')
+    if ids is None or ids.text.split() != ['3', '4']:
+        raise RuntimeError('HM-B5 must deactivate/reactivate only top materials 3 4')
 
 ts = root.find('./time_loop/processes/process/time_stepping')
 if ts is None:
@@ -179,6 +192,8 @@ if total != 2 or accepted != 2 or rejected != 0:
 Path('../hm-b5-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
     'gate=HM_B5_loaded_coupled_birth_equilibrium\n'
+    'deactivated_material_ids=3,4\n'
+    'active_loaded_domain_connected_to_bottom_support=true\n'
     f'fresh_birth_elements={fresh}\n'
     f'placement_elements={placement_ids}\n'
     'explicit_p_L0=12345\n'
