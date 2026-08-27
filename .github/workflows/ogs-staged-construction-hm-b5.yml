@@ -1,0 +1,47 @@
+name: OGS-STAGED-CONSTRUCTION-HM-B5
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-hm-b2.py'
+      - 'scripts/ogs-staged-construction-hm-b3.py'
+      - 'scripts/ogs-staged-construction-hm-b4.py'
+      - 'scripts/run-ogs-staged-construction-hm-b5.sh'
+      - '.github/workflows/ogs-staged-construction-hm-b5.yml'
+  workflow_dispatch:
+
+jobs:
+  hm-b5-loaded-coupled-birth-equilibrium:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore OGS build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release
+            .cpm-cache
+          key: ogs-staged-construction-r0-${{ runner.os }}-${{ env.OGS_UPSTREAM_SHA }}-v1
+      - name: Run HM-B5 loaded coupled birth equilibrium E2E
+        run: bash scripts/run-ogs-staged-construction-hm-b5.sh
+      - name: Freeze HM-B5 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-hm-b5-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=HM_B5_loaded_coupled_birth_equilibrium\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-hm-b5-evidence/provenance.txt
+          cp hm-b5-evidence.txt staged-construction-hm-b5-evidence/ 2>/dev/null || true
+          cp ogs-hm-b5/hm-b5.log staged-construction-hm-b5-evidence/ 2>/dev/null || true
+          cp ogs-hm-b5/hm-b5-case/simHM_deactivate_H.prj staged-construction-hm-b5-evidence/ 2>/dev/null || true
+      - name: Upload HM-B5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-hm-b5-${{ github.sha }}
+          path: staged-construction-hm-b5-evidence
