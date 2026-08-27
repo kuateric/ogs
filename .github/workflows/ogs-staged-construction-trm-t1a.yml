@@ -1,0 +1,30 @@
+name: OGS-STAGED-CONSTRUCTION-TRM-T1A
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-trm-t1a-canonical-active-domain-probe.py'
+      - '.github/workflows/ogs-staged-construction-trm-t1a.yml'
+  workflow_dispatch:
+
+jobs:
+  trm-t1a-canonical-active-domain:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract pinned canonical TRM sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          authority=adf770974c7ee0435702fe617634d03d17ab7cb8
+          mkdir -p /tmp/trm-t1a
+          git cat-file -e "$authority^{commit}"
+          git show "$authority:ProcessLib/ThermoRichardsMechanics/ThermoRichardsMechanicsProcess.cpp" > /tmp/trm-t1a/ThermoRichardsMechanicsProcess.cpp
+          git show "$authority:ProcessLib/ThermoRichardsMechanics/CreateThermoRichardsMechanicsProcess.cpp" > /tmp/trm-t1a/CreateThermoRichardsMechanicsProcess.cpp
+      - name: Run canonical active-domain architecture probe
+        run: >-
+          python3 scripts/ogs-staged-construction-trm-t1a-canonical-active-domain-probe.py
+          /tmp/trm-t1a/ThermoRichardsMechanicsProcess.cpp
+          /tmp/trm-t1a/CreateThermoRichardsMechanicsProcess.cpp
