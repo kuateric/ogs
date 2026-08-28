@@ -37,17 +37,36 @@ jobs:
               raise RuntimeError('unexpected T1B bulk_node_ids fixture anchor')
           text = text.replace(old, new, 1)
 
-          # F05: the canonical TH2M excavation fixture carries essential scalar
-          # reference conditions (p_g and p_c on the top boundary, T prescribed).
-          # Earlier T1B normalization removed every scalar BC, creating an
-          # artificial null-space exactly when the previously inactive DOFs were
-          # released at reactivation. Restore placement/reference values on the
-          # compact fixture. This does not weaken the active-domain gate: TH2M
-          # local coupled contributions are instrumented before global Dirichlet
-          # elimination and the gate still requires the strict t=1 -> t=2 element
-          # set expansion. No stiffness/residual/material continuation is added.
+          # F06: the inherited TH2M displacement variable is quadratic (order 2),
+          # and the canonical ExcavationTH2M mesh generator explicitly converts
+          # its bulk mesh to quadratic elements for that interpolation family.
+          # The compact TRM two-material mesh used by T1B is linear. Convert this
+          # test mesh with OGS' established createQuadraticMesh utility rather than
+          # altering the solver, stiffness, constitutive law, or activation logic.
+          text = text.replace('-DOGS_BUILD_UTILS=OFF', '-DOGS_BUILD_UTILS=ON', 1)
+          build_old = 'cmake --build --preset release --target ProcessLib TH2M ogs --parallel 2'
+          build_new = 'cmake --build --preset release --target ProcessLib TH2M ogs createQuadraticMesh --parallel 2'
+          if text.count(build_old) != 1:
+              raise RuntimeError('unexpected T1B build target anchor')
+          text = text.replace(build_old, build_new, 1)
+
+          copy_anchor = "cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n"
+          quadratic = """cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n\n# Canonical TH2M uses order-2 displacement on a quadratic mesh. Keep the mixed\n# interpolation intact for this lifecycle gate. This is mesh/fixture normalization,\n# not numerical continuation.\nQUAD_BIN=\"$(find \"${GITHUB_WORKSPACE:-$PWD/..}/build/release\" -type f -name createQuadraticMesh -perm -111 | head -n1)\"\ntest -n \"$QUAD_BIN\"\n\"$QUAD_BIN\" -i th2m-t1b-case/domain.vtu -o th2m-t1b-case/domain.vtu\n"""
+          if text.count(copy_anchor) != 1:
+              raise RuntimeError('unexpected T1B compact-mesh copy anchor')
+          text = text.replace(copy_anchor, quadratic, 1)
+
+          ids_old = "replacement = '''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19</DataArray>\\n      </PointData>'''"
+          ids_new = """import re\nmatch = re.search(r'NumberOfPoints=\"(\\d+)\"', text)\nif not match:\n    raise RuntimeError('quadratic T1B fixture NumberOfPoints missing')\nnumber_of_points = int(match.group(1))\nbulk_node_ids = ' '.join(str(i) for i in range(number_of_points))\nreplacement = f'''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">{bulk_node_ids}</DataArray>\\n      </PointData>'''"""
+          if text.count(ids_old) != 1:
+              raise RuntimeError('unexpected T1B identity-map anchor')
+          text = text.replace(ids_old, ids_new, 1)
+
+          # F05: preserve the canonical TH2M scalar reference state. The compact
+          # fixture has no separate top mesh, so placement/reference values are
+          # imposed on its all-node boundary mesh for this domain-ownership gate.
           marker = """# MaterialID 1 is absent on (0,1] and returns at t>1. Identical declarations on\n"""
-          scalar_reference = """# Preserve the canonical TH2M fixture's essential scalar reference state.\n# The compact mesh has no separate top submesh, therefore its initial placement\n# values are imposed on the all-node boundary mesh for this domain-ownership\n# gate. Local coupled assembly is executed and logged before BC elimination.\nfor name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
+          scalar_reference = """# Preserve the canonical TH2M fixture's essential scalar reference state.\n# Local coupled assembly is executed and logged before BC elimination.\nfor name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
           if text.count(marker) != 1:
               raise RuntimeError('unexpected T1B scalar-reference fixture anchor')
           text = text.replace(marker, scalar_reference + marker, 1)
