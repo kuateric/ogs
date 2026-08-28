@@ -37,6 +37,21 @@ jobs:
               raise RuntimeError('unexpected T1B bulk_node_ids fixture anchor')
           text = text.replace(old, new, 1)
 
+          # F05: the canonical TH2M excavation fixture carries essential scalar
+          # reference conditions (p_g and p_c on the top boundary, T prescribed).
+          # Earlier T1B normalization removed every scalar BC, creating an
+          # artificial null-space exactly when the previously inactive DOFs were
+          # released at reactivation. Restore placement/reference values on the
+          # compact fixture. This does not weaken the active-domain gate: TH2M
+          # local coupled contributions are instrumented before global Dirichlet
+          # elimination and the gate still requires the strict t=1 -> t=2 element
+          # set expansion. No stiffness/residual/material continuation is added.
+          marker = """# MaterialID 1 is absent on (0,1] and returns at t>1. Identical declarations on\n"""
+          scalar_reference = """# Preserve the canonical TH2M fixture's essential scalar reference state.\n# The compact mesh has no separate top submesh, therefore its initial placement\n# values are imposed on the all-node boundary mesh for this domain-ownership\n# gate. Local coupled assembly is executed and logged before BC elimination.\nfor name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
+          if text.count(marker) != 1:
+              raise RuntimeError('unexpected T1B scalar-reference fixture anchor')
+          text = text.replace(marker, scalar_reference + marker, 1)
+
           anchor = """# Output only at the two construction states.\nout = root.find('./time_loop/output')\nif out is not None:\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
           replacement = """# The source excavation project registers an MFront-only plastic secondary\n# variable. T1B intentionally replaces the nonlinear solid law with\n# LinearElasticIsotropic, so remove that constitutive-specific registration and\n# its output alias. This changes only fixture diagnostics, not TH2M lifecycle.\nsecondary = proc.find('secondary_variables')\nif secondary is not None:\n    for var in list(secondary):\n        if var.get('internal_name') == 'EquivalentPlasticStrain':\n            secondary.remove(var)\n\nout = root.find('./time_loop/output')\nif out is not None:\n    variables_out = out.find('variables')\n    if variables_out is not None:\n        for var in list(variables_out):\n            if (var.text or '').strip() == 'epsilon_pls':\n                variables_out.remove(var)\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
           if text.count(anchor) != 1:
