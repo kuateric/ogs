@@ -11,6 +11,7 @@ jobs:
   th2m-t2b-fresh-birth-compile:
     runs-on: ubuntu-24.04
     env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
       OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
     steps:
@@ -23,11 +24,15 @@ jobs:
           path: .cpm-cache
           key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
       - name: Checkout pinned canonical OGS
+        shell: bash
         run: |
-          git clone https://github.com/Helmholtz-UFZ/ogs.git ogs-th2m-t2b
+          set -euo pipefail
+          rm -rf ogs-th2m-t2b
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-th2m-t2b
           cd ogs-th2m-t2b
-          git checkout "$OGS_UPSTREAM_SHA"
-          git submodule update --init --recursive
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
       - name: Apply TH2M fresh-birth runtime implementation
         run: |
           cp scripts/ogs-staged-construction-th2m-t2b-fresh-birth-runtime.py /tmp/th2m-t2b.py
