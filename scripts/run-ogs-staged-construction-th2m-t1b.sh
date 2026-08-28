@@ -136,15 +136,17 @@ for comp in ('0', '1'):
     ET.SubElement(bc, 'component').text = comp
     ET.SubElement(bc, 'parameter').text = 'zero'
 
-# MaterialID 1 is absent on (0,1] and returns at t>1. Identical declarations on
-# all monolithic primaries intentionally exercise existing Process union
-# semantics; no field-specific activity state is introduced.
+# MaterialID 1 is active at initialization so the global TH2M DOF structure is
+# built for the complete model. It is absent only during the construction stage
+# around t=1 and returns at t=2. This is the established model-change pattern:
+# model entities exist in the discretization, are removed for a stage, then are
+# reactivated without creating a new algebraic space at birth time.
 def deactivation():
     ds = ET.Element('deactivated_subdomains')
     d = ET.SubElement(ds, 'deactivated_subdomain')
     ti = ET.SubElement(d, 'time_interval')
-    ET.SubElement(ti, 'start').text = '0'
-    ET.SubElement(ti, 'end').text = '1'
+    ET.SubElement(ti, 'start').text = '0.5'
+    ET.SubElement(ti, 'end').text = '1.5'
     ET.SubElement(d, 'material_ids').text = '1'
     return ds
 
@@ -155,7 +157,8 @@ for name in required:
     ic = pv.find('initial_condition')
     pv.insert(list(pv).index(ic) + 1 if ic is not None else len(pv), deactivation())
 
-# Two fixed one-second steps provide authoritative inactive/reactivated snapshots.
+# Two fixed one-second steps provide authoritative active/void/reactivated
+# snapshots at t=0, t=1, and t=2 without changing physical material parameters.
 ts = root.find('./time_loop/processes/process/time_stepping')
 if ts is None:
     raise RuntimeError('time stepping missing')
@@ -203,18 +206,20 @@ if not records:
 by_time = {}
 for e, t in records:
     by_time.setdefault(round(t, 12), set()).add(e)
+a0 = by_time.get(0.0, set())
 a1 = by_time.get(1.0, set())
 a2 = by_time.get(2.0, set())
-if not a1 or not a2:
-    raise RuntimeError(f'missing TH2M snapshots: t1={len(a1)} t2={len(a2)}')
-if not a1 < a2:
-    raise RuntimeError(f'TH2M domain did not shrink/reactivate: t1={sorted(a1)} t2={sorted(a2)}')
+if not a0 or not a1 or not a2:
+    raise RuntimeError(f'missing TH2M snapshots: t0={len(a0)} t1={len(a1)} t2={len(a2)}')
+if not a1 < a0 or a2 != a0:
+    raise RuntimeError(f'TH2M active-void-active lifecycle failed: t0={sorted(a0)} t1={sorted(a1)} t2={sorted(a2)}')
 reactivated = a2 - a1
 if len(reactivated) == 0:
     raise RuntimeError('no TH2M elements reactivated')
 Path('../th2m-t1b-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
     'gate=TH2M_T1B_synchronized_coupled_runtime_deactivation\n'
+    f'active_elements_t0={sorted(a0)}\n'
     f'active_elements_t1={sorted(a1)}\n'
     f'active_elements_t2={sorted(a2)}\n'
     f'reactivated_elements={sorted(reactivated)}\n'
