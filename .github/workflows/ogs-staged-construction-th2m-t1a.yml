@@ -1,0 +1,31 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T1A
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-th2m-t1a-canonical-active-domain-probe.py'
+      - '.github/workflows/ogs-staged-construction-th2m-t1a.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t1a-canonical-active-domain-probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned canonical TH2M sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=adf770974c7ee0435702fe617634d03d17ab7cb8
+          mkdir -p /tmp/th2m-canonical
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/kuateric/ogs/${SHA}/ProcessLib/TH2M/TH2MProcess.cpp" \
+            -o /tmp/th2m-canonical/TH2MProcess.cpp
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/kuateric/ogs/${SHA}/ProcessLib/TH2M/CreateTH2MProcess.cpp" \
+            -o /tmp/th2m-canonical/CreateTH2MProcess.cpp
+      - name: Probe canonical monolithic active-domain architecture
+        run: |
+          python3 scripts/ogs-staged-construction-th2m-t1a-canonical-active-domain-probe.py \
+            /tmp/th2m-canonical/TH2MProcess.cpp \
+            /tmp/th2m-canonical/CreateTH2MProcess.cpp
