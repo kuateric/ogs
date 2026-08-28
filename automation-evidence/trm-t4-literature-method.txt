@@ -1,0 +1,67 @@
+TRM-T4 — literature-guided loaded coupled birth equilibrium method
+
+Canonical OGS authority:
+adf770974c7ee0435702fe617634d03d17ab7cb8
+
+Chosen method
+-------------
+Use stress-free element birth in the current converged/deformed configuration,
+activate the full physical constitutive/coupled operator immediately, and let
+the ordinary global nonlinear equilibrium solve remove the construction-induced
+out-of-balance force. Do not ramp stiffness or constitutive response from a
+near-zero value and do not reuse pre-void constitutive history.
+
+Why this method
+---------------
+It is the direct multiphysics extension of the already-authoritatively-passed
+A4L/HM architecture. TRM-T2/T3 already provide fresh constitutive state,
+zero birth stress, u_birth-relative mechanical kinematics, and explicit
+absolute p_L0/T0 placement states. T4 therefore adds a real nonzero body load
+and tests global equilibrium restoration without inventing a new continuation
+mechanism.
+
+Established analogues reviewed before T4
+----------------------------------------
+1. Abaqus Model Change / element activation documentation (2023-2025 docs):
+   element addition uses the activation configuration as the reference for
+   newly added material; full physical properties are used for full activation.
+   https://docs.software.vt.edu/
+
+2. PLAXIS staged-construction method: staged geometry/material changes create
+   an out-of-balance force that is resolved by the nonlinear calculation while
+   activated soil has its physical stiffness/strength available in the phase.
+   Bentley PLAXIS documentation and staged-construction theory.
+   https://www.bentley.com/software/plaxis-2d/
+
+3. FLAC3D staged excavation/backfill practice: zones can be assigned the null
+   model for excavation and later restored/assigned material for backfill;
+   equilibrium is then re-solved with the active zones and loads.
+   https://docs.itascacg.com/
+
+4. Qin et al. (2020), Stress-free-state based structural analysis and
+   construction control theory for staged construction bridges, Advances in
+   Bridge Engineering 1:1. The paper formulates staged construction using
+   stress-free-state variables and equilibrium of the current construction
+   stage.
+   https://doi.org/10.1186/s43251-020-00001-y
+
+5. Richards & Powrie (1994), Finite element analysis of construction sequences
+   for propped retaining walls, ICE Geotechnical Engineering 107(4), 207-216.
+   Construction sequence is treated as a sequence of equilibrium states rather
+   than by artificial stiffness dilution.
+   https://doi.org/10.1680/igeng.1994.26962
+
+T4 evidence contract
+--------------------
+- synchronized temperature / pressure / displacement lifecycle;
+- six newborn elements, each exactly once;
+- fresh constitutive state and zero birth stress;
+- mechanical reference = current deformed configuration;
+- p_L0 = 12345 Pa and T0 = 310.15 K as absolute placement states;
+- nonzero specific body force (0, -9.81) and solid density 2000;
+- stable bottom support, free top vertical deformation;
+- full physical TRM operator from first birth assembly;
+- no stiffness scaling, no residual homotopy, no material homotopy;
+- finite mechanical Newton correction at the birth step followed by strong
+  reduction to converged equilibrium;
+- no weakening of T0-T3 gates and no change of canonical OGS SHA.

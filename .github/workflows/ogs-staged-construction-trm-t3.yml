@@ -1,0 +1,43 @@
+name: OGS-STAGED-CONSTRUCTION-TRM-T3
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-trm-t2.py'
+      - 'scripts/ogs-staged-construction-trm-t3.py'
+      - 'scripts/run-ogs-staged-construction-trm-t3.sh'
+      - '.github/workflows/ogs-staged-construction-trm-t3.yml'
+  workflow_dispatch:
+
+jobs:
+  trm-t3-explicit-coupled-placement-state:
+    runs-on: ubuntu-24.04
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Run TRM-T3 explicit coupled placement-state E2E
+        run: bash scripts/run-ogs-staged-construction-trm-t3.sh
+      - name: Freeze TRM-T3 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-trm-t3-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=TRM_T3_explicit_coupled_placement_state\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-trm-t3-evidence/provenance.txt
+          cp trm-t3-evidence.txt staged-construction-trm-t3-evidence/ 2>/dev/null || true
+          cp ogs-trm-t3/trm-t3.log staged-construction-trm-t3-evidence/ 2>/dev/null || true
+          cp ogs-trm-t3/trm-t3-case/flow_fully_saturated.prj staged-construction-trm-t3-evidence/ 2>/dev/null || true
+      - name: Upload TRM-T3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-trm-t3-${{ github.sha }}
+          path: staged-construction-trm-t3-evidence
