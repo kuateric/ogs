@@ -1,0 +1,49 @@
+OGS staged construction TH2M-T0 scope evidence
+
+Canonical upstream OGS SHA:
+adf770974c7ee0435702fe617634d03d17ab7cb8
+
+Process target:
+ProcessLib/TH2M
+
+Canonical architecture inspected at the pinned SHA:
+- TH2M is monolithic; the DOF table contains gas pressure, capillary pressure,
+  temperature, and displacement.
+- TH2MProcess assembly, post-timestep state commit, and secondary-variable
+  computation use the process active-element set.
+- TH2MLocalAssembler owns current_states_, prev_states_, and material_states_;
+  material state variables are explicitly initialized and pushed back.
+
+Frozen staged-construction contract:
+- inactive means true process-wide void: no mechanics, gas storage/transport,
+  liquid storage/transport, thermal storage/conduction, or TH2M coupling;
+- activation uses the last converged displacement as mechanical birth/reference
+  configuration;
+- explicit placement state owns p_g,0, p_c,0, T_0; liquid pressure remains
+  derived from the TH2M primary pressure convention;
+- newly activated material gets fresh constitutive/material state and zero
+  birth stress unless an explicit placement stress is provided later;
+- full physical operators are used; no stiffness-to-zero scaling, residual
+  homotopy, or material homotopy is part of the contract;
+- construction equilibrium continuation keeps physical time constant.
+
+Established-method alignment checked before TH2M runtime mutation:
+- Abaqus Model Change: staged element removal/addition is an element-status
+  operation rather than a constitutive stiffness-ramp requirement.
+- PLAXIS Staged Construction: activation/deactivation and material assignment
+  are phase-level construction operations.
+- FLAC3D/Itasca: null zones are considered absent; current documentation states
+  the null state applies to mechanical, thermal, and fluid processes, and newly
+  created zones start with zero stress and no constitutive model until assigned.
+  Sequential-model documentation separately warns that stiffness changes alone
+  do not create a new equilibrium response and that construction alterations
+  create the unbalanced forces to be solved.
+
+Representative documentation:
+https://docs.itascacg.com/itasca910/flac3d/zone/doc/manual/zone_manual/zone_commands/cmd_zone.null.html
+https://docs.itascacg.com/itasca950/flac3d/docproject/source/modeling/problemsolving/loading.html
+https://bentleysystems.service-now.com/community?id=kb_article_view&sysparm_article=KB0108321
+https://docs.software.vt.edu/
+
+No ACTPLAS, EmbeddedBeam, Anchor, or unrelated structural-element scope is
+included in TH2M-T0. PR remains draft and must not be merged by this work.
