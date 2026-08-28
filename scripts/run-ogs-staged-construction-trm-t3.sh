@@ -91,6 +91,22 @@ for bc in by_name['displacement'].findall('./boundary_conditions/boundary_condit
     if (bc.findtext('parameter') or '').strip() != 'dirichlet0':
         raise RuntimeError('unexpected nonzero displacement support in T3 fixture')
 
+# The canonical fixture uses absolute-only PerComponentDeltaX tolerances.
+# Raising the absolute pressure level from O(1) to 12345 Pa leaves the Newton
+# correction at roundoff (~2.5e-12 Pa) but above the inherited absolute pressure
+# tolerance 1e-14 Pa. OGS' established PerComponentDeltaX criterion accepts
+# absolute OR relative convergence. Add a pressure-only reltol of 1e-14; all
+# original absolute tolerances remain unchanged and the other components retain
+# no relative shortcut. This is scale-aware convergence, not a physics or gate
+# relaxation.
+cc = root.find('./time_loop/processes/process/convergence_criterion')
+if cc is None or (cc.findtext('type') or '').strip() != 'PerComponentDeltaX':
+    raise RuntimeError('unexpected TRM convergence criterion')
+if cc.find('reltols') is not None:
+    raise RuntimeError('canonical TRM fixture unexpectedly already has reltols')
+reltols = ET.SubElement(cc, 'reltols')
+reltols.text = '0 1e-14 0 0'
+
 tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
 PY
 
@@ -150,6 +166,7 @@ Path('../trm-t3-evidence.txt').write_text(
     'pressure_semantics=absolute_primary_variable\n'
     'temperature_semantics=absolute_primary_variable\n'
     'full_physical_operator=true\n'
+    'pressure_relative_convergence_tolerance=1e-14\n'
     'physical_time_advanced_by_construction=false\n'
     'runtime_exit=0\n', encoding='utf-8')
 PY
