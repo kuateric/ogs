@@ -76,59 +76,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
           text = p.read_text(encoding='utf-8')
-          anchor = """p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')\nPY\n\ngit diff --check\n"""
-          insert = r'''p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
-PY
-
-# F09 is diagnostic only.  The authoritative T1B runtime has proven that the
-# coupled active set contracts at t=1 and expands again at t=2, but SparseLU
-# rejects the reactivated global system.  Instrument only the failure path of
-# the canonical Eigen direct solver to expose zero rows/columns; do not alter A,
-# rhs, constraints, solver choice, material parameters, or time stepping.
-python3 - <<'PY'
-from pathlib import Path
-p = Path('MathLib/LinAlg/Eigen/EigenLinearSolver.cpp')
-text = p.read_text(encoding='utf-8')
-old = '''        solver_.compute(A);
-        if (solver_.info() != Eigen::Success)
-        {
-            ERR("Failed during Eigen linear solver initialization");
-            return false;
-        }
-'''
-new = '''        solver_.compute(A);
-        if (solver_.info() != Eigen::Success)
-        {
-            auto const row_abs =
-                A.cwiseAbs() * Eigen::VectorXd::Ones(A.cols());
-            auto const col_abs =
-                A.transpose().cwiseAbs() * Eigen::VectorXd::Ones(A.rows());
-            INFO("TH2M-T1B F09 failed matrix rows={} cols={} nnz={}",
-                 A.rows(), A.cols(), A.nonZeros());
-            for (Eigen::Index i = 0; i < A.rows(); ++i)
-            {
-                if (row_abs[i] <= 1e-18 || col_abs[i] <= 1e-18)
-                {
-                    INFO("TH2M-T1B F09 structural-zero index={} row_abs={:.17g} col_abs={:.17g} diag={:.17g}",
-                         i, row_abs[i], col_abs[i], A.coeff(i, i));
-                }
-            }
-            ERR("Failed during Eigen linear solver initialization");
-            return false;
-        }
-'''
-if text.count(old) != 1:
-    raise RuntimeError('unexpected canonical Eigen direct-solver failure anchor')
-p.write_text(text.replace(old, new, 1), encoding='utf-8')
-PY
-
-git diff --check
-'''
+          anchor = "p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')\nPY\n\ngit diff --check\n"
+          payload = base64.b64decode('cC53cml0ZV90ZXh0KHRleHQucmVwbGFjZShhbmNob3IsIHJlcGxhY2VtZW50LCAxKSwgZW5jb2Rpbmc9J3V0Zi04JykKUFkKCiMgRjA5IGlzIGRpYWdub3N0aWMgb25seS4gVGhlIGF1dGhvcml0YXRpdmUgVDFCIHJ1bnRpbWUgaGFzIHByb3ZlbiB0aGF0IHRoZQojIGNvdXBsZWQgYWN0aXZlIHNldCBjb250cmFjdHMgYXQgdD0xIGFuZCBleHBhbmRzIGFnYWluIGF0IHQ9MiwgYnV0IFNwYXJzZUxVCiMgcmVqZWN0cyB0aGUgcmVhY3RpdmF0ZWQgZ2xvYmFsIHN5c3RlbS4gSW5zdHJ1bWVudCBvbmx5IHRoZSBmYWlsdXJlIHBhdGguCnB5dGhvbjMgLSA8PCdQWScKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnAgPSBQYXRoKCdNYXRoTGliL0xpbkFsZy9FaWdlbi9FaWdlbkxpbmVhclNvbHZlci5jcHAnKQp0ZXh0ID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9J3V0Zi04JykKb2xkID0gJycnICAgICAgICBzb2x2ZXJfLmNvbXB1dGUoQSk7CiAgICAgICAgaWYgKHNvbHZlcl8uaW5mbygpICE9IEVpZ2VuOjpTdWNjZXNzKQogICAgICAgIHsKICAgICAgICAgICAgRVJSKCJGYWlsZWQgZHVyaW5nIEVpZ2VuIGxpbmVhciBzb2x2ZXIgaW5pdGlhbGl6YXRpb24iKTsKICAgICAgICAgICAgcmV0dXJuIGZhbHNlOwogICAgICAgIH0KJycnCm5ldyA9ICcnJyAgICAgICAgc29sdmVyXy5jb21wdXRlKEEpOwogICAgICAgIGlmIChzb2x2ZXJfLmluZm8oKSAhPSBFaWdlbjo6U3VjY2VzcykKICAgICAgICB7CiAgICAgICAgICAgIGF1dG8gY29uc3Qgcm93X2FicyA9CiAgICAgICAgICAgICAgICBBLmN3aXNlQWJzKCkgKiBFaWdlbjo6VmVjdG9yWGQ6Ok9uZXMoQS5jb2xzKCkpOwogICAgICAgICAgICBhdXRvIGNvbnN0IGNvbF9hYnMgPQogICAgICAgICAgICAgICAgQS50cmFuc3Bvc2UoKS5jd2lzZUFicygpICogRWlnZW46OlZlY3RvclhkOjpPbmVzKEEucm93cygpKTsKICAgICAgICAgICAgSU5GTygiVEgyTS1UMUIgRjA5IGZhaWxlZCBtYXRyaXggcm93cz17fSBjb2xzPXt9IG5uej17fSIsCiAgICAgICAgICAgICAgICAgQS5yb3dzKCksIEEuY29scygpLCBBLm5vblplcm9zKCkpOwogICAgICAgICAgICBmb3IgKEVpZ2VuOjpJbmRleCBpID0gMDsgaSA8IEEucm93cygpOyArK2kpCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgIGlmIChyb3dfYWJzW2ldIDw9IDFlLTE4IHx8IGNvbF9hYnNbaV0gPD0gMWUtMTgpCiAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgSU5GTygiVEgyTS1UMUIgRjA5IHN0cnVjdHVyYWwtemVybyBpbmRleD17fSByb3dfYWJzPXs6LjE3Z30gY29sX2Ficz17Oi4xN2d9IGRpYWc9ezouMTdnfSIsCiAgICAgICAgICAgICAgICAgICAgICAgICBpLCByb3dfYWJzW2ldLCBjb2xfYWJzW2ldLCBBLmNvZWZmKGksIGkpKTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgICAgICBFUlIoIkZhaWxlZCBkdXJpbmcgRWlnZW4gbGluZWFyIHNvbHZlciBpbml0aWFsaXphdGlvbiIpOwogICAgICAgICAgICByZXR1cm4gZmFsc2U7CiAgICAgICAgfQonJycKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoJ3VuZXhwZWN0ZWQgY2Fub25pY2FsIEVpZ2VuIGRpcmVjdC1zb2x2ZXIgZmFpbHVyZSBhbmNob3InKQpwLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9J3V0Zi04JykKUFkKCmdpdCBkaWZmIC0tY2hlY2sK').decode('utf-8')
           if text.count(anchor) != 1:
               raise RuntimeError('unexpected T1B upstream instrumentation anchor')
-          p.write_text(text.replace(anchor, insert, 1), encoding='utf-8')
+          p.write_text(text.replace(anchor, payload, 1), encoding='utf-8')
           PY
       - name: Run TH2M-T1B synchronized coupled runtime E2E
         run: bash scripts/run-ogs-staged-construction-th2m-t1b.sh
