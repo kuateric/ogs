@@ -138,24 +138,37 @@ for comp in ('0', '1'):
 
 # MaterialID 1 is active at initialization so the global TH2M DOF structure is
 # built for the complete model. It is absent only during the construction stage
-# around t=1 and returns at t=2. This is the established model-change pattern:
-# model entities exist in the discretization, are removed for a stage, then are
-# reactivated without creating a new algebraic space at birth time.
-def deactivation():
+# around t=1 and returns at t=2. Preserve each field's physical placement state
+# while inactive: OGS otherwise uses an artificial zero Dirichlet value for the
+# inactive interior DOFs. Zero is appropriate for displacement here, but not for
+# gas pressure, capillary pressure, or absolute temperature. Keeping those scalar
+# fields at their canonical reference values prevents the first reactivated local
+# assembly from seeing a non-physical T=0 / pressure=0 state before the ordinary
+# global Dirichlet conditions are applied.
+def deactivation(boundary_parameter):
     ds = ET.Element('deactivated_subdomains')
     d = ET.SubElement(ds, 'deactivated_subdomain')
     ti = ET.SubElement(d, 'time_interval')
     ET.SubElement(ti, 'start').text = '0.5'
     ET.SubElement(ti, 'end').text = '1.5'
     ET.SubElement(d, 'material_ids').text = '1'
+    ET.SubElement(d, 'boundary_parameter').text = boundary_parameter
     return ds
 
+placement_parameters = {
+    'gas_pressure': 'pg_0_function',
+    'capillary_pressure': 'pc_0',
+    'temperature': 'T0',
+    'displacement': 'zero',
+}
 for name in required:
     pv = variables[name]
     old = pv.find('deactivated_subdomains')
     if old is not None: pv.remove(old)
     ic = pv.find('initial_condition')
-    pv.insert(list(pv).index(ic) + 1 if ic is not None else len(pv), deactivation())
+    pv.insert(
+        list(pv).index(ic) + 1 if ic is not None else len(pv),
+        deactivation(placement_parameters[name]))
 
 # Two fixed one-second steps provide authoritative active/void/reactivated
 # snapshots at t=0, t=1, and t=2 without changing physical material parameters.
@@ -224,6 +237,7 @@ Path('../th2m-t1b-evidence.txt').write_text(
     f'active_elements_t2={sorted(a2)}\n'
     f'reactivated_elements={sorted(reactivated)}\n'
     'gas_capillary_temperature_displacement_lifecycle=synchronized\n'
+    'inactive_scalar_state=placement_reference_preserved\n'
     'monolithic_TH2M_local_assembly_routed_by_active_set=true\n'
     'production_process_patch=none\n'
     'stiffness_scaling=false\n'
