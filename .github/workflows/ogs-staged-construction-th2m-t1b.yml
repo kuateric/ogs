@@ -23,18 +23,26 @@ jobs:
         with:
           path: .cpm-cache
           key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
-      - name: Normalize compact fixture bulk-node map type
+      - name: Normalize compact TH2M fixture metadata
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
           text = p.read_text(encoding='utf-8')
+
           old = 'DataArray type="Int64" Name="bulk_node_ids"'
           new = 'DataArray type="UInt64" Name="bulk_node_ids"'
           if text.count(old) != 1:
               raise RuntimeError('unexpected T1B bulk_node_ids fixture anchor')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(old, new, 1)
+
+          anchor = """# Output only at the two construction states.\nout = root.find('./time_loop/output')\nif out is not None:\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
+          replacement = """# The source excavation project requests EquivalentPlasticStrain, but T1B\n# intentionally replaces its nonlinear solid law with LinearElasticIsotropic.\n# Remove only that inherited plastic-only secondary-variable request; lifecycle\n# physics and the authoritative assembly evidence remain unchanged.\nout = root.find('./time_loop/output')\nif out is not None:\n    variables_out = out.find('variables')\n    if variables_out is not None:\n        for var in list(variables_out):\n            if (var.text or '').strip() == 'EquivalentPlasticStrain':\n                variables_out.remove(var)\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
+          if text.count(anchor) != 1:
+              raise RuntimeError('unexpected T1B output fixture anchor')
+          text = text.replace(anchor, replacement, 1)
+          p.write_text(text, encoding='utf-8')
           PY
       - name: Run TH2M-T1B synchronized coupled runtime E2E
         run: bash scripts/run-ogs-staged-construction-th2m-t1b.sh
