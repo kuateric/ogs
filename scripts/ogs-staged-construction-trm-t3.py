@@ -59,10 +59,14 @@ if text.count(old) != 1:
     raise RuntimeError("unexpected TRM local DOF anchor")
 text = text.replace(old, new, 1)
 
+# The canonical TRM implementation evaluates eps=B*u in both the primary
+# assembly and secondary-variable evaluation. Only the first occurrence is in
+# assembleWithJacobianSingleIP and belongs to this replacement. Requiring a
+# global count of exactly one incorrectly rejects the canonical source.
 old = '''        KelvinVectorType eps = B * u;\n'''
 new = '''        KelvinVectorType eps = B * u_constitutive;\n'''
-if text.count(old) != 1:
-    raise RuntimeError("unexpected TRM constitutive strain anchor")
+if text.count(old) < 1:
+    raise RuntimeError("missing TRM constitutive strain anchor")
 text = text.replace(old, new, 1)
 impl.write_text(text, encoding="utf-8")
 
