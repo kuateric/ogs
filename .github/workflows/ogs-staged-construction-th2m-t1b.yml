@@ -37,12 +37,7 @@ jobs:
               raise RuntimeError('unexpected T1B bulk_node_ids fixture anchor')
           text = text.replace(old, new, 1)
 
-          # F06: the inherited TH2M displacement variable is quadratic (order 2),
-          # and the canonical ExcavationTH2M mesh generator explicitly converts
-          # its bulk mesh to quadratic elements for that interpolation family.
-          # The compact TRM two-material mesh used by T1B is linear. Convert this
-          # test mesh with OGS' established createQuadraticMesh utility rather than
-          # altering the solver, stiffness, constitutive law, or activation logic.
+          # F06: canonical TH2M uses quadratic displacement interpolation.
           text = text.replace('-DOGS_BUILD_UTILS=OFF', '-DOGS_BUILD_UTILS=ON', 1)
           build_old = 'cmake --build --preset release --target ProcessLib TH2M ogs --parallel 2'
           build_new = 'cmake --build --preset release --target ProcessLib TH2M ogs createQuadraticMesh --parallel 2'
@@ -51,7 +46,7 @@ jobs:
           text = text.replace(build_old, build_new, 1)
 
           copy_anchor = "cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n"
-          quadratic = """cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n\n# Canonical TH2M uses order-2 displacement on a quadratic mesh. Keep the mixed\n# interpolation intact for this lifecycle gate. This is mesh/fixture normalization,\n# not numerical continuation.\nQUAD_BIN=\"$(find \"${GITHUB_WORKSPACE:-$PWD/..}/build/release\" -type f -name createQuadraticMesh -perm -111 | head -n1)\"\ntest -n \"$QUAD_BIN\"\n\"$QUAD_BIN\" -i th2m-t1b-case/domain.vtu -o th2m-t1b-case/domain.vtu\n"""
+          quadratic = """cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n\n# Canonical TH2M uses order-2 displacement on a quadratic mesh.\nQUAD_BIN=\"$(find \"${GITHUB_WORKSPACE:-$PWD/..}/build/release\" -type f -name createQuadraticMesh -perm -111 | head -n1)\"\ntest -n \"$QUAD_BIN\"\n\"$QUAD_BIN\" -i th2m-t1b-case/domain.vtu -o th2m-t1b-case/domain.vtu\n"""
           if text.count(copy_anchor) != 1:
               raise RuntimeError('unexpected T1B compact-mesh copy anchor')
           text = text.replace(copy_anchor, quadratic, 1)
@@ -62,17 +57,15 @@ jobs:
               raise RuntimeError('unexpected T1B identity-map anchor')
           text = text.replace(ids_old, ids_new, 1)
 
-          # F05: preserve the canonical TH2M scalar reference state. The compact
-          # fixture has no separate top mesh, so placement/reference values are
-          # imposed on its all-node boundary mesh for this domain-ownership gate.
-          marker = """# MaterialID 1 is absent on (0,1] and returns at t>1. Identical declarations on\n"""
+          # F05: preserve canonical TH2M scalar reference state.
+          marker = """# MaterialID 1 is active at initialization so the global TH2M DOF structure is\n"""
           scalar_reference = """# Preserve the canonical TH2M fixture's essential scalar reference state.\n# Local coupled assembly is executed and logged before BC elimination.\nfor name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
           if text.count(marker) != 1:
               raise RuntimeError('unexpected T1B scalar-reference fixture anchor')
           text = text.replace(marker, scalar_reference + marker, 1)
 
           anchor = """# Output only at the two construction states.\nout = root.find('./time_loop/output')\nif out is not None:\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
-          replacement = """# The source excavation project registers an MFront-only plastic secondary\n# variable. T1B intentionally replaces the nonlinear solid law with\n# LinearElasticIsotropic, so remove that constitutive-specific registration and\n# its output alias. This changes only fixture diagnostics, not TH2M lifecycle.\nsecondary = proc.find('secondary_variables')\nif secondary is not None:\n    for var in list(secondary):\n        if var.get('internal_name') == 'EquivalentPlasticStrain':\n            secondary.remove(var)\n\nout = root.find('./time_loop/output')\nif out is not None:\n    variables_out = out.find('variables')\n    if variables_out is not None:\n        for var in list(variables_out):\n            if (var.text or '').strip() == 'epsilon_pls':\n                variables_out.remove(var)\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
+          replacement = """# Remove constitutive-specific plastic diagnostics from the linear T1B fixture.\nsecondary = proc.find('secondary_variables')\nif secondary is not None:\n    for var in list(secondary):\n        if var.get('internal_name') == 'EquivalentPlasticStrain':\n            secondary.remove(var)\n\nout = root.find('./time_loop/output')\nif out is not None:\n    variables_out = out.find('variables')\n    if variables_out is not None:\n        for var in list(variables_out):\n            if (var.text or '').strip() == 'epsilon_pls':\n                variables_out.remove(var)\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
           if text.count(anchor) != 1:
               raise RuntimeError('unexpected T1B output fixture anchor')
           text = text.replace(anchor, replacement, 1)
