@@ -71,6 +71,65 @@ jobs:
           text = text.replace(anchor, replacement, 1)
           p.write_text(text, encoding='utf-8')
           PY
+      - name: Add failure-only matrix rank diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
+          text = p.read_text(encoding='utf-8')
+          anchor = """p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')\nPY\n\ngit diff --check\n"""
+          insert = r'''p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+PY
+
+# F09 is diagnostic only.  The authoritative T1B runtime has proven that the
+# coupled active set contracts at t=1 and expands again at t=2, but SparseLU
+# rejects the reactivated global system.  Instrument only the failure path of
+# the canonical Eigen direct solver to expose zero rows/columns; do not alter A,
+# rhs, constraints, solver choice, material parameters, or time stepping.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('MathLib/LinAlg/Eigen/EigenLinearSolver.cpp')
+text = p.read_text(encoding='utf-8')
+old = '''        solver_.compute(A);
+        if (solver_.info() != Eigen::Success)
+        {
+            ERR("Failed during Eigen linear solver initialization");
+            return false;
+        }
+'''
+new = '''        solver_.compute(A);
+        if (solver_.info() != Eigen::Success)
+        {
+            auto const row_abs =
+                A.cwiseAbs() * Eigen::VectorXd::Ones(A.cols());
+            auto const col_abs =
+                A.transpose().cwiseAbs() * Eigen::VectorXd::Ones(A.rows());
+            INFO("TH2M-T1B F09 failed matrix rows={} cols={} nnz={}",
+                 A.rows(), A.cols(), A.nonZeros());
+            for (Eigen::Index i = 0; i < A.rows(); ++i)
+            {
+                if (row_abs[i] <= 1e-18 || col_abs[i] <= 1e-18)
+                {
+                    INFO("TH2M-T1B F09 structural-zero index={} row_abs={:.17g} col_abs={:.17g} diag={:.17g}",
+                         i, row_abs[i], col_abs[i], A.coeff(i, i));
+                }
+            }
+            ERR("Failed during Eigen linear solver initialization");
+            return false;
+        }
+'''
+if text.count(old) != 1:
+    raise RuntimeError('unexpected canonical Eigen direct-solver failure anchor')
+p.write_text(text.replace(old, new, 1), encoding='utf-8')
+PY
+
+git diff --check
+'''
+          if text.count(anchor) != 1:
+              raise RuntimeError('unexpected T1B upstream instrumentation anchor')
+          p.write_text(text.replace(anchor, insert, 1), encoding='utf-8')
+          PY
       - name: Run TH2M-T1B synchronized coupled runtime E2E
         run: bash scripts/run-ogs-staged-construction-th2m-t1b.sh
       - name: Freeze TH2M-T1B evidence
