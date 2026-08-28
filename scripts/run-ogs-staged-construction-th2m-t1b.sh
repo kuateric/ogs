@@ -39,6 +39,21 @@ mkdir -p th2m-t1b-case
 cp Tests/Data/TH2M/ExcavationTH2M/excavation_th2m.prj th2m-t1b-case/th2m_t1b.prj
 cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu
 
+# OGS Dirichlet BCs resolve boundary-mesh nodes back to bulk nodes through the
+# bulk_node_ids point property. The compact two-material fixture is intentionally
+# reused as the all-node boundary mesh, so add the identity map explicitly. This
+# is fixture metadata only; it changes neither TH2M lifecycle nor numerics.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('th2m-t1b-case/domain.vtu')
+text = p.read_text(encoding='utf-8')
+anchor = '''      <PointData>\n      </PointData>'''
+replacement = '''      <PointData>\n        <DataArray type="Int64" Name="bulk_node_ids" format="ascii">0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19</DataArray>\n      </PointData>'''
+if text.count(anchor) != 1:
+    raise RuntimeError('unexpected compact fixture PointData anchor')
+p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+PY
+
 python3 - <<'PY'
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -109,9 +124,10 @@ for pv in variables.values():
     if bcs is not None:
         pv.remove(bcs)
 
-# Keep mechanics nonsingular with full-domain zero displacement. This does not
-# bypass local assembly: TH2M local contributions are assembled before global
-# Dirichlet elimination and are captured by the instrumented assembler trace.
+# Keep mechanics nonsingular with full-domain zero displacement. The fixture mesh
+# carries an identity bulk_node_ids map, satisfying OGS boundary-to-bulk mapping.
+# Local TH2M contributions are still assembled before global Dirichlet elimination
+# and are captured by the instrumented assembler trace.
 bcs = ET.SubElement(variables['displacement'], 'boundary_conditions')
 for comp in ('0', '1'):
     bc = ET.SubElement(bcs, 'boundary_condition')
