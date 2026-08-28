@@ -1,0 +1,56 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T2B
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-th2m-t2b-fresh-birth-runtime.py'
+      - '.github/workflows/ogs-staged-construction-th2m-t2b.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t2b-fresh-birth-compile:
+    runs-on: ubuntu-24.04
+    env:
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Checkout pinned canonical OGS
+        run: |
+          git clone https://github.com/Helmholtz-UFZ/ogs.git ogs-th2m-t2b
+          cd ogs-th2m-t2b
+          git checkout "$OGS_UPSTREAM_SHA"
+          git submodule update --init --recursive
+      - name: Apply TH2M fresh-birth runtime implementation
+        run: |
+          cp scripts/ogs-staged-construction-th2m-t2b-fresh-birth-runtime.py /tmp/th2m-t2b.py
+          cd ogs-th2m-t2b
+          python3 /tmp/th2m-t2b.py
+          git diff --check
+          git diff -- ProcessLib/TH2M/LocalAssemblerInterface.h ProcessLib/TH2M/TH2MFEM.h ProcessLib/TH2M/TH2MFEM-impl.h ProcessLib/TH2M/TH2MProcess.cpp
+      - name: Configure TH2M build
+        working-directory: ogs-th2m-t2b
+        run: |
+          cmake --preset release -DOGS_BUILD_TESTING=OFF -DOGS_BUILD_CLI=ON -DOGS_BUILD_PROCESS_TH2M=ON
+      - name: Compile TH2M implementation
+        working-directory: ogs-th2m-t2b
+        run: cmake --build --preset release --target TH2M ogs --parallel 2
+      - name: Freeze TH2M-T2B evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-th2m-t2b-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=TH2M_T2B_fresh_birth_compile\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-th2m-t2b-evidence/provenance.txt
+          cd ogs-th2m-t2b && git diff > ../staged-construction-th2m-t2b-evidence/t2b.patch || true
+      - name: Upload TH2M-T2B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-th2m-t2b-${{ github.sha }}
+          path: staged-construction-th2m-t2b-evidence
