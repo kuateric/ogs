@@ -1,0 +1,194 @@
+name: OGS-STAGED-CONSTRUCTION-PHASE-C-BEAM-ANCHOR-C1
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-phase-c-beam-anchor-c1.yml'
+      - 'automation-evidence/phase-c-beam-anchor-c1-authority.md'
+      - 'scripts/ogs-staged-construction-phase-c-anchor-c0.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  beam-anchor-authority-composition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      G2_AUTHORITY_REPO: kuateric/engineering-os
+      G2_AUTHORITY_SHA: 557ce56b6a6dded188dd9b14525ba2fb45f3938a
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+
+    steps:
+      - name: Checkout staged-construction branch
+        uses: actions/checkout@v4
+        with:
+          path: staged
+
+      - name: Checkout frozen EmbeddedBeam G2 authority
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.G2_AUTHORITY_REPO }}
+          ref: ${{ env.G2_AUTHORITY_SHA }}
+          path: engineering-os-g2
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3 python3-venv
+          python3 -m venv .c1-venv
+          .c1-venv/bin/pip install --quiet meshio numpy
+
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+
+      - name: Checkout pinned canonical OGS
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+
+      - name: Verify exact frozen authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C engineering-os-g2 rev-parse HEAD)" = "$G2_AUTHORITY_SHA"
+          test -f ogs-upstream/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp
+          test ! -e ogs-upstream/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedBeam.cpp
+          test -f engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam.py
+          test -f engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam_unique_dof_patch.py
+          test -f engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam_zero_inertia_patch.py
+
+      - name: Apply passed Anchor C0 lifecycle patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ogs-upstream
+          python3 ../staged/scripts/ogs-staged-construction-phase-c-anchor-c0.py
+
+      - name: Apply exact frozen EmbeddedBeam G2 stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam.py
+          python3 engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam_unique_dof_patch.py
+          python3 engineering-os-g2/modules/geotechnical/ogs_str/g2/apply_embedded_beam_zero_inertia_patch.py
+          git -C ogs-upstream diff --check
+          test -f ogs-upstream/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedBeam.cpp
+          test -f ogs-upstream/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedBeam.h
+
+      - name: Configure SmallDeformation build
+        working-directory: ogs-upstream
+        run: cmake --preset release -DOGS_BUILD_TESTING=OFF -DOGS_BUILD_CLI=ON -DOGS_BUILD_PROCESS_SmallDeformation=ON
+
+      - name: Compile combined EmbeddedBeam and EmbeddedAnchor executable
+        working-directory: ogs-upstream
+        run: cmake --build --preset release --target SmallDeformation ogs --parallel 2
+
+      - name: Prepare staged Anchor and native EmbeddedBeam fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GITHUB_WORKSPACE/.c1-venv/bin/python" - <<'PY'
+          from pathlib import Path
+          import meshio
+          import numpy as np
+
+          case = Path('ogs-upstream/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm')
+          anchors = case / 'anchors.vtu'
+          mesh = meshio.read(anchors)
+          mesh.cell_data['activation_time'] = [
+              np.full(len(block.data), 0.5, dtype=float) for block in mesh.cells
+          ]
+          meshio.write(anchors, mesh, file_format='vtu', binary=True)
+
+          src = meshio.read(anchors)
+          line_block = next(cb for cb in src.cells if cb.type == 'line')
+          e0, e1 = map(int, line_block.data[0])
+          p0, p1 = src.points[e0], src.points[e1]
+          pm = 0.5 * (p0 + p1)
+          points = np.vstack([p0, p1, pm])
+          bulk = np.asarray(src.point_data['bulk_element_ids'])
+          nat = np.asarray(src.point_data['natural_coordinates'])
+          if int(bulk[e0]) != int(bulk[e1]):
+              raise SystemExit('C1 beam fixture requires first anchor endpoints in one host element')
+          point_data = {
+              'bulk_element_ids': np.array([bulk[e0], bulk[e1], bulk[e0]], dtype=np.uint64),
+              'natural_coordinates': np.vstack([nat[e0], nat[e1], 0.5 * (nat[e0] + nat[e1])]),
+          }
+          cells = [('line3', np.array([[0, 1, 2]], dtype=np.int64))]
+
+          def write_beam(name, inertia):
+              cell_data = {
+                  'beam_cross_sectional_area': [np.array([1.0])],
+                  'beam_youngs_modulus': [np.array([3.2])],
+                  'beam_second_moment_area': [np.array([inertia])],
+              }
+              meshio.write(case / name, meshio.Mesh(points, cells, point_data=point_data, cell_data=cell_data))
+
+          write_beam('embedded_beam_axial.vtu', 0.0)
+          write_beam('embedded_beam_bending.vtu', 0.05)
+          PY
+
+          CASE=ogs-upstream/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm
+          cp "$CASE/beam_two_material.prj" "$CASE/embedded_beam_axial.prj"
+          sed -i '/<name>E0<\/name>/,/<\/parameter>/ s#<value>0\.</value>#<value>1.0</value>#' "$CASE/embedded_beam_axial.prj"
+          sed -i 's/<mesh>anchors.vtu<\/mesh>/<mesh>embedded_beam_axial.vtu<\/mesh>/' "$CASE/embedded_beam_axial.prj"
+          sed -i 's/<mesh>anchors<\/mesh>/<mesh>embedded_beam_axial<\/mesh>/' "$CASE/embedded_beam_axial.prj"
+          sed -i 's/<type>EmbeddedAnchor<\/type>/<type>EmbeddedBeam<\/type>/' "$CASE/embedded_beam_axial.prj"
+          sed -i 's/<prefix>beam_two_material_two_anchors<\/prefix>/<prefix>embedded_beam_axial<\/prefix>/' "$CASE/embedded_beam_axial.prj"
+          cp "$CASE/embedded_beam_axial.prj" "$CASE/embedded_beam_bending.prj"
+          sed -i 's/embedded_beam_axial.vtu/embedded_beam_bending.vtu/' "$CASE/embedded_beam_bending.prj"
+          sed -i 's/<mesh>embedded_beam_axial<\/mesh>/<mesh>embedded_beam_bending<\/mesh>/' "$CASE/embedded_beam_bending.prj"
+          sed -i 's/<prefix>embedded_beam_axial<\/prefix>/<prefix>embedded_beam_bending<\/prefix>/' "$CASE/embedded_beam_bending.prj"
+
+      - name: Execute authoritative staged Anchor birth E2E in combined binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE="$GITHUB_WORKSPACE/ogs-upstream/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm"
+          BIN="$GITHUB_WORKSPACE/build/release/bin/ogs"
+          mkdir -p "$GITHUB_WORKSPACE/c1-anchor-output"
+          cd "$CASE"
+          "$BIN" beam_two_material.prj -o "$GITHUB_WORKSPACE/c1-anchor-output" 2>&1 | tee "$GITHUB_WORKSPACE/c1-anchor.log"
+          test "$(grep -c 'stress-free birth reference captured from preTimestep converged state' "$GITHUB_WORKSPACE/c1-anchor.log")" -eq 2
+          test "$(grep -c 'at t = 0.5; full physical stiffness active' "$GITHUB_WORKSPACE/c1-anchor.log")" -eq 2
+          grep -q 'Simulation completed' "$GITHUB_WORKSPACE/c1-anchor.log"
+
+      - name: Execute frozen native EmbeddedBeam axial and bending E2Es
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE="$GITHUB_WORKSPACE/ogs-upstream/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm"
+          BIN="$GITHUB_WORKSPACE/build/release/bin/ogs"
+          cd "$CASE"
+          "$BIN" embedded_beam_axial.prj -o "$GITHUB_WORKSPACE/c1-beam-axial-output" 2>&1 | tee "$GITHUB_WORKSPACE/c1-beam-axial.log"
+          "$BIN" embedded_beam_bending.prj -o "$GITHUB_WORKSPACE/c1-beam-bending-output" 2>&1 | tee "$GITHUB_WORKSPACE/c1-beam-bending.log"
+          grep -q 'Simulation completed' "$GITHUB_WORKSPACE/c1-beam-axial.log"
+          grep -q 'Simulation completed' "$GITHUB_WORKSPACE/c1-beam-bending.log"
+
+      - name: Freeze C1 authority-composition evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p c1-evidence
+          printf 'canonical_ogs_sha=%s\nworkflow_sha=%s\ng2_authority_sha=%s\ngate=PHASE_C_C1_BEAM_ANCHOR_AUTHORITY_COMPOSITION\njob_status=%s\nanchor_c0_lifecycle=1\nembedded_beam_g2_frozen=1\nstiffness_homotopy=0\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "$G2_AUTHORITY_SHA" "${{ job.status }}" > c1-evidence/provenance.txt
+          cp c1-anchor.log c1-beam-axial.log c1-beam-bending.log c1-evidence/ 2>/dev/null || true
+          git -C ogs-upstream diff > c1-evidence/combined.patch || true
+
+      - name: Upload C1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-phase-c-c1-${{ github.sha }}
+          path: c1-evidence
