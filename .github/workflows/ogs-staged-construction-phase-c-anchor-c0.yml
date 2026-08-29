@@ -91,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           CASE_DIR="$GITHUB_WORKSPACE/ogs-phase-c-anchor-c0/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm"
-          OGS_BIN="$GITHUB_WORKSPACE/ogs-phase-c-anchor-c0/build/release/bin/ogs"
+          OGS_BIN="$GITHUB_WORKSPACE/build/release/bin/ogs"
           OUT_DIR="$GITHUB_WORKSPACE/anchor-c0-runtime-output"
           mkdir -p "$OUT_DIR"
           cd "$CASE_DIR"
