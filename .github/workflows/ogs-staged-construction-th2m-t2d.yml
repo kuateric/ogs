@@ -7,6 +7,8 @@ on:
       - 'scripts/run-ogs-staged-construction-th2m-t2c.sh'
       - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
       - 'scripts/ogs-staged-construction-th2m-t2b-fresh-birth-runtime.py'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t2d.py'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py'
       - '.github/workflows/ogs-staged-construction-th2m-t2d.yml'
   workflow_dispatch:
 
