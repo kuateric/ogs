@@ -1,0 +1,75 @@
+name: OGS-STAGED-CONSTRUCTION-PHASE-C-ANCHOR-C0
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-phase-c-anchor-c0.yml'
+      - 'scripts/ogs-staged-construction-phase-c-anchor-c0.py'
+      - 'automation-evidence/phase-c-anchor-c0-literature-basis.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anchor-c0-stress-free-birth-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Checkout pinned canonical OGS
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ogs-phase-c-anchor-c0
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-phase-c-anchor-c0
+          cd ogs-phase-c-anchor-c0
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+      - name: Verify Phase C structural baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ogs-phase-c-anchor-c0/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp
+          test -f ogs-phase-c-anchor-c0/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h
+          if find ogs-phase-c-anchor-c0/ProcessLib -iname '*EmbeddedBeam*' -print -quit | grep -q .; then
+            echo 'Unexpected EmbeddedBeam found in pinned canonical OGS; review structural-element authority.' >&2
+            exit 1
+          fi
+      - name: Apply Anchor C0 lifecycle implementation
+        run: |
+          cp scripts/ogs-staged-construction-phase-c-anchor-c0.py /tmp/anchor-c0.py
+          cd ogs-phase-c-anchor-c0
+          python3 /tmp/anchor-c0.py
+          git diff --check
+          git diff -- ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp
+      - name: Configure SmallDeformation build
+        working-directory: ogs-phase-c-anchor-c0
+        run: cmake --preset release -DOGS_BUILD_TESTING=OFF -DOGS_BUILD_CLI=ON -DOGS_BUILD_PROCESS_SmallDeformation=ON
+      - name: Compile EmbeddedAnchor integration
+        working-directory: ogs-phase-c-anchor-c0
+        run: cmake --build --preset release --target SmallDeformation ogs --parallel 2
+      - name: Freeze Anchor C0 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-phase-c-anchor-c0-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=PHASE_C_ANCHOR_C0_STRESS_FREE_BIRTH_COMPILE\njob_status=%s\nembedded_anchor_present=1\nembedded_beam_present=0\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-phase-c-anchor-c0-evidence/provenance.txt
+          cd ogs-phase-c-anchor-c0 && git diff > ../staged-construction-phase-c-anchor-c0-evidence/anchor-c0.patch || true
+      - name: Upload Anchor C0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-phase-c-anchor-c0-${{ github.sha }}
+          path: staged-construction-phase-c-anchor-c0-evidence
