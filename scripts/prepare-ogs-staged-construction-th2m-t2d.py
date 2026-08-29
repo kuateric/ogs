@@ -83,24 +83,14 @@ src = src.replace('TH2M-T2C', 'TH2M-T2D')
 src = src.replace('th2m-t2c', 'th2m-t2d')
 src = src.replace('TH2M_T2C', 'TH2M_T2D')
 
-evidence_anchor = """if not reactivated <= referenced:
-    raise RuntimeError(f'missing u_birth captures: reactivated={sorted(reactivated)} referenced={sorted(referenced)}')
-Path('../th2m-t2d-evidence.txt').write_text(
-"""
-evidence_insert = """if not reactivated <= referenced:
-    raise RuntimeError(f'missing u_birth captures: reactivated={sorted(reactivated)} referenced={sorted(referenced)}')
-mfront_allocations = log.count('TH2M-T2D MFront/MGIS fresh BehaviourData allocation')
-mfront_birth_initializers = len(re.findall(r'TH2M-T2D MFront/MGIS virgin state initializer at t = 2(?:\\.0+)?', log))
-if mfront_allocations == 0:
-    raise RuntimeError('no real MFront/MGIS BehaviourData allocation observed')
-if mfront_birth_initializers == 0:
-    raise RuntimeError('no MFront/MGIS virgin initializer observed at reactivation t=2')
-if 'MFront: integration failed' in log:
-    raise RuntimeError('MFront integration failure detected')
-Path('../th2m-t2d-evidence.txt').write_text(
-"""
+# Inject into the T2C generator at the unique evidence write call instead of
+# matching a multi-line generated-code fragment. This keeps the transformation
+# stable whether the generator stores those lines physically or as literal \n
+# escapes and avoids another layer of quoting-sensitive code generation.
+evidence_anchor = "Path('../th2m-t2d-evidence.txt').write_text("
+evidence_insert = """mfront_allocations = log.count('TH2M-T2D MFront/MGIS fresh BehaviourData allocation')\\nmfront_birth_initializers = len(re.findall(r'TH2M-T2D MFront/MGIS virgin state initializer at t = 2(?:\\\\.0+)?', log))\\nif mfront_allocations == 0:\\n    raise RuntimeError('no real MFront/MGIS BehaviourData allocation observed')\\nif mfront_birth_initializers == 0:\\n    raise RuntimeError('no MFront/MGIS virgin initializer observed at reactivation t=2')\\nif 'MFront: integration failed' in log:\\n    raise RuntimeError('MFront integration failure detected')\\nPath('../th2m-t2d-evidence.txt').write_text("""
 if src.count(evidence_anchor) != 1:
-    raise RuntimeError('T2D evidence anchor changed')
+    raise RuntimeError('T2D evidence write anchor changed')
 src = src.replace(evidence_anchor, evidence_insert, 1)
 
 field_anchor = """    'birth_stress=zero_unless_explicit_placement_state\\n'
