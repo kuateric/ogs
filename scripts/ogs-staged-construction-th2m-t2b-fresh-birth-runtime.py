@@ -131,6 +131,29 @@ text = text.replace('ip_cv.beta_p_SR, ip_out.eps_data,\n            Bu * displac
                     'ip_cv.beta_p_SR, ip_out.eps_data,\n            Bu * displacement_prev_constitutive, prev_state.porosity_data,', 1)
 impl.write_text(text, encoding="utf-8")
 
+process_header = root / "ProcessLib/TH2M/TH2MProcess.h"
+text = process_header.read_text(encoding="utf-8")
+anchor = '''    std::vector<std::unique_ptr<LocalAssemblerInterface<DisplacementDim>>>
+        local_assemblers_;
+
+    std::unique_ptr<NumLib::LocalToGlobalIndexMap>
+'''
+insert = '''    std::vector<std::unique_ptr<LocalAssemblerInterface<DisplacementDim>>>
+        local_assemblers_;
+
+    // Snapshot of the actually assembled construction state from the previous
+    // converged step. Process::getActiveElementIDs() is time-dependent and an
+    // empty vector means "all elements active", so a persistent explicit set is
+    // required to detect inactive -> active birth transitions robustly.
+    std::vector<std::size_t> previous_construction_active_element_ids_;
+    bool previous_construction_active_element_ids_initialized_ = false;
+
+    std::unique_ptr<NumLib::LocalToGlobalIndexMap>
+'''
+if text.count(anchor) != 1:
+    raise RuntimeError("TH2M-T2B process-state member anchor changed")
+process_header.write_text(text.replace(anchor, insert, 1), encoding="utf-8")
+
 process = root / "ProcessLib/TH2M/TH2MProcess.cpp"
 text = process.read_text(encoding="utf-8")
 include_anchor = '#include <cassert>\n'
@@ -140,23 +163,44 @@ text = text.replace(include_anchor, '#include <algorithm>\n#include <cassert>\n#
 anchor = '''    AssemblyMixin<TH2MProcess<DisplacementDim>>::updateActiveElements();
 }
 '''
-insert = '''    auto const active_before = getActiveElementIDs();
-    AssemblyMixin<TH2MProcess<DisplacementDim>>::updateActiveElements();
-    auto const& active_after = getActiveElementIDs();
+insert = '''    AssemblyMixin<TH2MProcess<DisplacementDim>>::updateActiveElements();
 
-    std::vector<std::size_t> newly_activated;
-    std::set_difference(active_after.begin(), active_after.end(),
-                        active_before.begin(), active_before.end(),
-                        std::back_inserter(newly_activated));
-    if (!newly_activated.empty())
+    // Normalize OGS' active-set sentinel: an empty getActiveElementIDs() means
+    // the complete mesh is active. Keep an explicit set from the previous
+    // converged construction state, rather than sampling the time-dependent
+    // ProcessVariable twice within the same preTimestep call.
+    auto current_active = getActiveElementIDs();
+    if (current_active.empty())
     {
-        GlobalExecutor::executeSelectedMemberOnDereferenced(
-            &LocalAssemblerInterface<DisplacementDim>::
-                initializeActivationPlacementState,
-            local_assemblers_, newly_activated, t);
-        INFO("TH2M fresh-birth event published for {:d} element(s) at t={:g}",
-             newly_activated.size(), t);
+        current_active.reserve(this->getMesh().getElements().size());
+        for (auto const* element : this->getMesh().getElements())
+        {
+            current_active.push_back(element->getID());
+        }
     }
+    std::sort(current_active.begin(), current_active.end());
+
+    if (previous_construction_active_element_ids_initialized_)
+    {
+        std::vector<std::size_t> newly_activated;
+        std::set_difference(
+            current_active.begin(), current_active.end(),
+            previous_construction_active_element_ids_.begin(),
+            previous_construction_active_element_ids_.end(),
+            std::back_inserter(newly_activated));
+        if (!newly_activated.empty())
+        {
+            GlobalExecutor::executeSelectedMemberOnDereferenced(
+                &LocalAssemblerInterface<DisplacementDim>::
+                    initializeActivationPlacementState,
+                local_assemblers_, newly_activated, t);
+            INFO("TH2M fresh-birth event published for {:d} element(s) at t={:g}",
+                 newly_activated.size(), t);
+        }
+    }
+
+    previous_construction_active_element_ids_ = std::move(current_active);
+    previous_construction_active_element_ids_initialized_ = true;
 }
 '''
 if text.count(anchor) != 1:
@@ -164,12 +208,11 @@ if text.count(anchor) != 1:
 process.write_text(text.replace(anchor, insert, 1), encoding="utf-8")
 
 # Hard safety gates: T2B must not introduce any numerical weakening mechanism.
-joined = '\n'.join(p.read_text(encoding='utf-8') for p in (iface, header, impl, process))
-for forbidden in ('activation_contribution_scale', 'stiffness scaling', 'residual homotopy', 'material homotopy'):
-    # comments may contain the literature wording for the last three; only code
-    # identifier activation_contribution_scale is an unconditional hard fail.
-    if forbidden == 'activation_contribution_scale' and forbidden in joined:
-        raise RuntimeError('TH2M-T2B forbidden activation scaling mechanism detected')
+joined = '\n'.join(
+    p.read_text(encoding='utf-8')
+    for p in (iface, header, impl, process_header, process))
+if 'activation_contribution_scale' in joined:
+    raise RuntimeError('TH2M-T2B forbidden activation scaling mechanism detected')
 
-print('TH2M-T2B patch applied: fresh state + last-converged u_birth + full operator')
+print('TH2M-T2B patch applied: fresh state + persistent active-set birth detection + last-converged u_birth + full operator')
 print('canonical_ogs_sha=adf770974c7ee0435702fe617634d03d17ab7cb8')
