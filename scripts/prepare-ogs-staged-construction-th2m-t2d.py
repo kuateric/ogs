@@ -69,9 +69,12 @@ text = text.replace(param_anchor, param_insert, 1)
 t1b.write_text(text, encoding='utf-8')
 
 # Generate the executable T2D runtime from the already-passing T2C runtime.
+# T2C itself is a generator: the canonical-checkout injection appears inside a
+# Python triple-quoted string as literal backslash-n escapes, not as physical
+# newlines in this source file. Match that representation exactly.
 src = Path('scripts/run-ogs-staged-construction-th2m-t2c.sh').read_text(encoding='utf-8')
-patch_anchor = "python3 /tmp/th2m-t2b-runtime.py\ngit diff --check"
-patch_insert = "python3 /tmp/th2m-t2b-runtime.py\npython3 \"$GITHUB_WORKSPACE/scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py\"\ngit diff --check"
+patch_anchor = "python3 /tmp/th2m-t2b-runtime.py\\ngit diff --check"
+patch_insert = "python3 /tmp/th2m-t2b-runtime.py\\npython3 \"$GITHUB_WORKSPACE/scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py\"\\ngit diff --check"
 if src.count(patch_anchor) != 1:
     raise RuntimeError('T2D T2C canonical patch anchor changed')
 src = src.replace(patch_anchor, patch_insert, 1)
