@@ -45,4 +45,7 @@ Path('/tmp/run-th2m-t2c.sh').write_text(src, encoding='utf-8')
 PY
 
 chmod +x /tmp/run-th2m-t2c.sh
+if [ "${TH2M_T2C_PREPARE_ONLY:-0}" = "1" ]; then
+  exit 0
+fi
 /tmp/run-th2m-t2c.sh
