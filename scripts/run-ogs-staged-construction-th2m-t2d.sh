@@ -85,7 +85,7 @@ from pathlib import Path
 src = Path('scripts/run-ogs-staged-construction-th2m-t2c.sh').read_text(encoding='utf-8')
 needle = '''python3 /tmp/th2m-t2b-runtime.py
 git diff --check'''
-insert = r'''python3 /tmp/th2m-t2b-runtime.py
+insert = r"""python3 /tmp/th2m-t2b-runtime.py
 python3 - <<'PY_MFRONT'
 from pathlib import Path
 p = Path('MaterialLib/SolidModels/MFront/MFrontGeneric.h')
@@ -120,7 +120,7 @@ if text.count(init) != 1:
 text = text.replace(init, init_probe, 1)
 p.write_text(text, encoding='utf-8')
 PY_MFRONT
-git diff --check'''
+git diff --check"""
 if src.count(needle) != 1:
     raise RuntimeError('T2D T2C canonical patch anchor changed')
 src = src.replace(needle, insert, 1)
