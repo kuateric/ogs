@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  anchor-c0-stress-free-birth-compile:
+  anchor-c0-stress-free-birth-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3 python3-venv
       - name: Restore portable dependency source cache
         uses: actions/cache@v4
         with:
@@ -54,18 +54,62 @@ jobs:
           cd ogs-phase-c-anchor-c0
           python3 /tmp/anchor-c0.py
           git diff --check
-          git diff -- ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp
+          git diff -- \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTerm.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTermCollection.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTermCollection.cpp \
+            ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp \
+            ProcessLib/Process.cpp
       - name: Configure SmallDeformation build
         working-directory: ogs-phase-c-anchor-c0
         run: cmake --preset release -DOGS_BUILD_TESTING=OFF -DOGS_BUILD_CLI=ON -DOGS_BUILD_PROCESS_SmallDeformation=ON
       - name: Compile EmbeddedAnchor integration
         working-directory: ogs-phase-c-anchor-c0
         run: cmake --build --preset release --target SmallDeformation ogs --parallel 2
+      - name: Prepare staged-anchor runtime fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/anchor-meshio
+          /tmp/anchor-meshio/bin/pip -q install meshio
+          /tmp/anchor-meshio/bin/python - <<'PY'
+          import meshio
+          import numpy as np
+          from pathlib import Path
+
+          p = Path('ogs-phase-c-anchor-c0/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm/anchors.vtu')
+          mesh = meshio.read(p)
+          mesh.cell_data['activation_time'] = [
+              np.full(len(block.data), 0.5, dtype=float) for block in mesh.cells
+          ]
+          meshio.write(p, mesh, file_format='vtu', binary=True)
+          print('activation_time=0.5 written for', sum(len(c.data) for c in mesh.cells), 'anchor cells')
+          PY
+      - name: Execute authoritative stress-free anchor birth E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE_DIR="$GITHUB_WORKSPACE/ogs-phase-c-anchor-c0/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm"
+          OGS_BIN="$GITHUB_WORKSPACE/ogs-phase-c-anchor-c0/build/release/bin/ogs"
+          OUT_DIR="$GITHUB_WORKSPACE/anchor-c0-runtime-output"
+          mkdir -p "$OUT_DIR"
+          cd "$CASE_DIR"
+          "$OGS_BIN" beam_two_material.prj -o "$OUT_DIR" 2>&1 | tee "$GITHUB_WORKSPACE/anchor-c0-runtime.log"
+
+          test "$(grep -c 'stress-free birth reference captured from preTimestep converged state' "$GITHUB_WORKSPACE/anchor-c0-runtime.log")" -eq 2
+          test "$(grep -c 'at t = 0.5; full physical stiffness active' "$GITHUB_WORKSPACE/anchor-c0-runtime.log")" -eq 2
+          if grep 'stress-free birth reference captured' "$GITHUB_WORKSPACE/anchor-c0-runtime.log" | grep -vq 'at t = 0.5;'; then
+            echo 'Anchor birth occurred outside the requested construction phase.' >&2
+            exit 1
+          fi
+          grep -q 'Simulation completed' "$GITHUB_WORKSPACE/anchor-c0-runtime.log"
       - name: Freeze Anchor C0 evidence
         if: always()
         run: |
           mkdir -p staged-construction-phase-c-anchor-c0-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=PHASE_C_ANCHOR_C0_STRESS_FREE_BIRTH_COMPILE\njob_status=%s\nembedded_anchor_present=1\nembedded_beam_present=0\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-phase-c-anchor-c0-evidence/provenance.txt
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=PHASE_C_ANCHOR_C0_PRETIMESTEP_STRESS_FREE_BIRTH_RUNTIME\njob_status=%s\nembedded_anchor_present=1\nembedded_beam_present=0\nactivation_time=0.5\nfull_physical_stiffness=1\nstiffness_homotopy=0\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-phase-c-anchor-c0-evidence/provenance.txt
+          cp anchor-c0-runtime.log staged-construction-phase-c-anchor-c0-evidence/runtime.log 2>/dev/null || true
           cd ogs-phase-c-anchor-c0 && git diff > ../staged-construction-phase-c-anchor-c0-evidence/anchor-c0.patch || true
       - name: Upload Anchor C0 evidence
         if: always()
