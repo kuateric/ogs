@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import os
+import subprocess
 
 # CI-only preparation for TH2M-T2D. This deliberately does not modify the
 # production birth algorithm. It converts the proven T1B/T2C fixture to a real
-# MFront law and inserts runtime-only probes at the canonical MFront state
-# allocation/initialization boundary.
+# MFront law and instruments the canonical MFront state allocation/initialization
+# boundary. T2D transforms the already-generated T2C runtime, not the T2C source
+# generator, to avoid nested quoting/code-generation failure modes.
 
 t1b = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
 text = t1b.read_text(encoding='utf-8')
@@ -68,29 +71,49 @@ if text.count(param_anchor) != 1:
 text = text.replace(param_anchor, param_insert, 1)
 t1b.write_text(text, encoding='utf-8')
 
-# Generate the executable T2D runtime from the already-passing T2C runtime.
-# T2C itself is a generator: the canonical-checkout injection appears inside a
-# Python triple-quoted string as literal backslash-n escapes, not as physical
-# newlines in this source file. Match that representation exactly.
-src = Path('scripts/run-ogs-staged-construction-th2m-t2c.sh').read_text(encoding='utf-8')
-patch_anchor = "python3 /tmp/th2m-t2b-runtime.py\\ngit diff --check"
-patch_insert = "python3 /tmp/th2m-t2b-runtime.py\\npython3 \"$GITHUB_WORKSPACE/scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py\"\\ngit diff --check"
+# Ask the already-authoritative T2C generator to materialize its final runtime,
+# but do not execute it. This is deliberately a supported mode of the same T2C
+# gate, so default T2C execution semantics remain unchanged.
+env = dict(os.environ)
+env['TH2M_T2C_PREPARE_ONLY'] = '1'
+subprocess.run(
+    ['bash', 'scripts/run-ogs-staged-construction-th2m-t2c.sh'],
+    check=True,
+    env=env,
+)
+
+runtime = Path('/tmp/run-th2m-t2c.sh')
+if not runtime.is_file():
+    raise RuntimeError('T2D expected generated T2C runtime is missing')
+src = runtime.read_text(encoding='utf-8')
+
+# From here onward all anchors are physical lines in the final shell script.
+patch_anchor = "python3 /tmp/th2m-t2b-runtime.py\ngit diff --check"
+patch_insert = (
+    "python3 /tmp/th2m-t2b-runtime.py\n"
+    "python3 \"$GITHUB_WORKSPACE/scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py\"\n"
+    "git diff --check"
+)
 if src.count(patch_anchor) != 1:
-    raise RuntimeError('T2D T2C canonical patch anchor changed')
+    raise RuntimeError('T2D generated-runtime patch anchor changed')
 src = src.replace(patch_anchor, patch_insert, 1)
 
 src = src.replace('TH2M-T2C', 'TH2M-T2D')
 src = src.replace('th2m-t2c', 'th2m-t2d')
 src = src.replace('TH2M_T2C', 'TH2M_T2D')
 
-# Inject into the T2C generator at the unique evidence write call instead of
-# matching a multi-line generated-code fragment. This keeps the transformation
-# stable whether the generator stores those lines physically or as literal \n
-# escapes and avoids another layer of quoting-sensitive code generation.
 evidence_anchor = "Path('../th2m-t2d-evidence.txt').write_text("
-evidence_insert = """mfront_allocations = log.count('TH2M-T2D MFront/MGIS fresh BehaviourData allocation')\\nmfront_birth_initializers = len(re.findall(r'TH2M-T2D MFront/MGIS virgin state initializer at t = 2(?:\\\\.0+)?', log))\\nif mfront_allocations == 0:\\n    raise RuntimeError('no real MFront/MGIS BehaviourData allocation observed')\\nif mfront_birth_initializers == 0:\\n    raise RuntimeError('no MFront/MGIS virgin initializer observed at reactivation t=2')\\nif 'MFront: integration failed' in log:\\n    raise RuntimeError('MFront integration failure detected')\\nPath('../th2m-t2d-evidence.txt').write_text("""
+evidence_insert = """mfront_allocations = log.count('TH2M-T2D MFront/MGIS fresh BehaviourData allocation')
+mfront_birth_initializers = len(re.findall(r'TH2M-T2D MFront/MGIS virgin state initializer at t = 2(?:\\.0+)?', log))
+if mfront_allocations == 0:
+    raise RuntimeError('no real MFront/MGIS BehaviourData allocation observed')
+if mfront_birth_initializers == 0:
+    raise RuntimeError('no MFront/MGIS virgin initializer observed at reactivation t=2')
+if 'MFront: integration failed' in log:
+    raise RuntimeError('MFront integration failure detected')
+Path('../th2m-t2d-evidence.txt').write_text("""
 if src.count(evidence_anchor) != 1:
-    raise RuntimeError('T2D evidence write anchor changed')
+    raise RuntimeError('T2D generated-runtime evidence anchor changed')
 src = src.replace(evidence_anchor, evidence_insert, 1)
 
 field_anchor = """    'birth_stress=zero_unless_explicit_placement_state\\n'
@@ -103,7 +126,7 @@ field_insert = """    'birth_stress=zero_unless_explicit_placement_state\\n'
     'physical_stiffness=full_from_first_active_assembly\\n'
 """
 if src.count(field_anchor) != 1:
-    raise RuntimeError('T2D evidence field anchor changed')
+    raise RuntimeError('T2D generated-runtime evidence field anchor changed')
 src = src.replace(field_anchor, field_insert, 1)
 
 Path('/tmp/run-th2m-t2d.sh').write_text(src, encoding='utf-8')
