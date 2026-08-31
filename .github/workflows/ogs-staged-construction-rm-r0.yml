@@ -1,11 +1,6 @@
 name: OGS-STAGED-CONSTRUCTION-RM-R0
 
 on:
-  push:
-    branches: [agent/ogs-staged-construction-rm-r0]
-    paths:
-      - 'scripts/ogs-staged-construction-rm-r0.py'
-      - '.github/workflows/ogs-staged-construction-rm-r0.yml'
   pull_request:
     paths:
       - 'scripts/ogs-staged-construction-rm-r0.py'
@@ -14,6 +9,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ogs-rm-r0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rm-lifecycle-contract:
@@ -50,3 +49,4 @@ jobs:
         with:
           name: ogs-staged-construction-rm-r0-${{ github.sha }}
           path: staged-construction-evidence
+          retention-days: 7
