@@ -104,6 +104,30 @@ if src.count(bc_block) != 1:
     raise RuntimeError('TH2M-T3 displacement-BC anchor changed')
 src = src.replace(bc_block, bc_replacement, 1)
 
+# The authoritative displacement-difference gate reads OGS VTK output directly.
+# Force only this CI fixture's serialization to ASCII so the evidence parser does
+# not depend on VTK appended/binary decoding. OGS documents Ascii as a supported
+# time_loop.output.data_mode; this changes output encoding, not the physical solve.
+output_block = """# Output only at the two construction states.
+out = root.find('./time_loop/output')
+if out is not None:
+    fot = out.find('fixed_output_times')
+    if fot is not None: fot.text = '1\\n2'
+"""
+output_replacement = """# Output only at the two construction states.
+out = root.find('./time_loop/output')
+if out is not None:
+    fot = out.find('fixed_output_times')
+    if fot is not None: fot.text = '1\\n2'
+    data_mode = out.find('data_mode')
+    if data_mode is None:
+        data_mode = ET.SubElement(out, 'data_mode')
+    data_mode.text = 'Ascii'
+"""
+if src.count(output_block) != 1:
+    raise RuntimeError('TH2M-T3 output-mode anchor changed')
+src = src.replace(output_block, output_replacement, 1)
+
 evidence_anchor = "Path('../th2m-t3-evidence.txt').write_text("
 evidence_insert = r"""import xml.etree.ElementTree as ET
 import math
@@ -143,6 +167,8 @@ u1 = state_at(1.0)
 u2 = state_at(2.0)
 if len(u1) != len(u2):
     raise RuntimeError('TH2M-T3 displacement vector size changed')
+if not u1:
+    raise RuntimeError('TH2M-T3 displacement output is empty')
 correction = max(
     math.sqrt(sum((a-b)**2 for a, b in zip(v1, v2)))
     for v1, v2 in zip(u1, u2)
