@@ -7,6 +7,7 @@ on:
       - 'scripts/ogs-staged-construction-th2m-t3-contract.py'
       - 'scripts/prepare-ogs-staged-construction-th2m-t3-runtime.py'
       - 'scripts/run-ogs-staged-construction-th2m-t3.sh'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t3-mfront.py'
       - 'scripts/run-ogs-staged-construction-th2m-t2d.sh'
       - 'scripts/prepare-ogs-staged-construction-th2m-t2d.py'
       - 'scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py'
