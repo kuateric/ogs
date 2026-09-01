@@ -68,3 +68,24 @@ if count == 0:
 # the selected Jacobian assembler executes.
 text = text.replace(anchor, probe)
 p.write_text(text, encoding='utf-8')
+
+# T3G diagnostic only: observe the global Newton right-hand side immediately
+# after canonical TH2M AssemblyMixin assembly returns. Process-level boundary
+# conditions are applied by the nonlinear-solver path after this callback, so
+# this distinguishes loss during local-to-global assembly from later
+# constraint/solver elimination. norm2() is read-only; no vector or Jacobian
+# entry is changed.
+p = Path('ProcessLib/TH2M/TH2MProcess.cpp')
+text = p.read_text(encoding='utf-8')
+anchor = """    AssemblyMixin<TH2MProcess<DisplacementDim>>::assembleWithJacobian(
+        t, dt, x, x_prev, process_id, b, Jac);
+"""
+probe = """    AssemblyMixin<TH2MProcess<DisplacementDim>>::assembleWithJacobian(
+        t, dt, x, x_prev, process_id, b, Jac);
+    INFO(\"TH2M-T3G global Newton RHS before BC t={:g} norm2={:.17g}\",
+         t, MathLib::LinAlg::norm2(b));
+"""
+if text.count(anchor) != 1:
+    raise RuntimeError('canonical TH2M global Jacobian assembly anchor changed')
+text = text.replace(anchor, probe, 1)
+p.write_text(text, encoding='utf-8')
