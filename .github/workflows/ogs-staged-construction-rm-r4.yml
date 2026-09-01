@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ogs-staged-construction-rm-r4.yml'
+      - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2g.py'
       - 'scripts/ogs-staged-construction-rm-r2b-fresh-birth-runtime.py'
       - 'scripts/ogs-staged-construction-rm-r4-material-reassignment.py'
   workflow_dispatch:
@@ -33,11 +35,19 @@ jobs:
           git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
-      - name: Apply passed RM fresh-birth implementation and R4 rebind
+      - name: Apply proven lifecycle, fresh-birth implementation and R4 rebind
         run: |
+          cp scripts/ogs-staged-construction-r0.py /tmp/rm-r0.py
+          cp scripts/ogs-staged-construction-r2g.py /tmp/rm-r2g.py
           cp scripts/ogs-staged-construction-rm-r2b-fresh-birth-runtime.py /tmp/rm-r2b.py
           cp scripts/ogs-staged-construction-rm-r4-material-reassignment.py /tmp/rm-r4.py
           cd ogs-rm-r4
+          # R4 consumes the same persistent DomainTransition plumbing that is
+          # already authoritative in A4L/HM. Apply it to the pinned canonical
+          # checkout before the RM-specific birth/rebind layers; do not invent
+          # an RM-only lifecycle implementation.
+          python3 /tmp/rm-r0.py
+          python3 /tmp/rm-r2g.py
           python3 /tmp/rm-r2b.py
           python3 /tmp/rm-r4.py
           git diff --check
@@ -101,12 +111,9 @@ jobs:
               ds.insert(0,ti)
               am=ET.Element('activation_material_id')
               am.text='0'
-              # Keep target ID adjacent to the material-domain identity.
               mat=ds.find('material_ids')
               ds.insert(list(ds).index(mat)+1,am)
 
-          # Preserve canonical physical loading and use the same convergent
-          # four-step path that authoritatively closed R2/R3.
           load_top=next((x for x in params.findall('parameter') if x.findtext('name')=='load_top'),None)
           if load_top is None or float(load_top.findtext('values'))!=-12e6:
               raise RuntimeError('canonical A2 top load changed')
