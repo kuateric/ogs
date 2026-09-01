@@ -45,10 +45,6 @@ import xml.etree.ElementTree as ET
 p = Path('rm-r1-case/A2.prj')
 tree = ET.parse(p)
 root = tree.getroot()
-
-# Canonical A2 already synchronizes pressure and displacement excavation. For R1
-# make the same MaterialID=1 cluster inactive only on [1,2], so t=3 proves
-# re-entry. Keep the benchmark's real RM media and full physical operators.
 variables = {pv.findtext('name').strip(): pv for pv in root.findall('./process_variables/process_variable')}
 for name in ('pressure', 'displacement'):
     pv = variables.get(name)
@@ -57,23 +53,15 @@ for name in ('pressure', 'displacement'):
     ds = pv.find('deactivated_subdomains/deactivated_subdomain')
     if ds is None or (ds.findtext('material_ids') or '').strip() != '1':
         raise RuntimeError(f'canonical RM A2 does not expose expected MaterialID=1 lifecycle for {name}')
-    tc = ds.find('time_curve')
-    if tc is not None:
-        ds.remove(tc)
-    ls = ds.find('line_segment')
-    if ls is not None:
-        ds.remove(ls)
-    bp = ds.find('boundary_parameter')
-    if bp is not None:
-        ds.remove(bp)
+    for tag in ('time_curve', 'line_segment', 'boundary_parameter'):
+        x = ds.find(tag)
+        if x is not None:
+            ds.remove(x)
     ti = ET.Element('time_interval')
-    ET.SubElement(ti, 'start').text = '1'
-    ET.SubElement(ti, 'end').text = '2'
+    ET.SubElement(ti, 'start').text = '1.01'
+    ET.SubElement(ti, 'end').text = '2.01'
     ds.insert(0, ti)
 
-# R1 isolates lifecycle ownership from construction disequilibrium. Zero external
-# and initial loading while retaining the complete RM constitutive/hydraulic
-# operator and Biot coupling. Loaded birth belongs to R3.
 for par in root.findall('./parameters/parameter'):
     name = (par.findtext('name') or '').strip()
     if name in {'pressure0', 'pressure_tunnel', 'pressure_outside', 'load_top'}:
@@ -84,18 +72,22 @@ for par in root.findall('./parameters/parameter'):
         for expr in par.findall('expression'):
             expr.text = '0'
 
-# Compact deterministic snapshots at t=1,2,3.
+# Preserve the canonical A2 small initial equilibration step (0.01 s), then
+# traverse the reversible construction interval with deterministic 1 s steps.
 ts = root.find('./time_loop/processes/process/time_stepping')
 if ts is None:
     raise RuntimeError('missing RM time stepping')
 for child in list(ts):
     if child.tag in {'t_end', 'timesteps'}:
         ts.remove(child)
-ET.SubElement(ts, 't_end').text = '3'
+ET.SubElement(ts, 't_end').text = '3.01'
 timesteps = ET.SubElement(ts, 'timesteps')
-pair = ET.SubElement(timesteps, 'pair')
-ET.SubElement(pair, 'repeat').text = '3'
-ET.SubElement(pair, 'delta_t').text = '1'
+pair0 = ET.SubElement(timesteps, 'pair')
+ET.SubElement(pair0, 'repeat').text = '1'
+ET.SubElement(pair0, 'delta_t').text = '0.01'
+pair1 = ET.SubElement(timesteps, 'pair')
+ET.SubElement(pair1, 'repeat').text = '3'
+ET.SubElement(pair1, 'delta_t').text = '1'
 
 tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
 PY
@@ -122,16 +114,15 @@ pat = re.compile(r'RM-R1 coupled assembly element (\d+) at t = ([-+0-9.eE]+)')
 by_time = {}
 for e, t in pat.findall(log):
     by_time.setdefault(round(float(t), 12), set()).add(int(e))
-for t in (1.0, 2.0, 3.0):
+for t in (0.01, 1.01, 2.01, 3.01):
     if t not in by_time:
         raise RuntimeError(f'missing RM-R1 assembly snapshot at t={t}; available={sorted(by_time)}')
-a1, a2, a3 = by_time[1.0], by_time[2.0], by_time[3.0]
-# OGS interval endpoint semantics may make t=1 or t=2 the inactive snapshot;
-# require at least one construction-interval snapshot to be a strict subset of
-# the post-interval t=3 domain, and require exact post-interval restoration.
+a0, a1, a2, a3 = by_time[0.01], by_time[1.01], by_time[2.01], by_time[3.01]
+if not a0:
+    raise RuntimeError('RM-R1 missing pre-construction active domain')
 inactive_candidates = [s for s in (a1, a2) if s < a3]
 if not inactive_candidates:
-    raise RuntimeError(f'RM domain did not shrink: t1={len(a1)} t2={len(a2)} t3={len(a3)}')
+    raise RuntimeError(f'RM domain did not shrink: t1.01={len(a1)} t2.01={len(a2)} t3.01={len(a3)}')
 inactive = min(inactive_candidates, key=len)
 reactivated = a3 - inactive
 if not reactivated:
@@ -139,11 +130,13 @@ if not reactivated:
 Path('../rm-r1-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
     'gate=RM_R1_synchronized_pressure_displacement_domain_lifecycle\n'
-    f'active_elements_t1={sorted(a1)}\n'
-    f'active_elements_t2={sorted(a2)}\n'
-    f'active_elements_t3={sorted(a3)}\n'
+    f'active_elements_t0.01={sorted(a0)}\n'
+    f'active_elements_t1.01={sorted(a1)}\n'
+    f'active_elements_t2.01={sorted(a2)}\n'
+    f'active_elements_t3.01={sorted(a3)}\n'
     f'reactivated_elements={sorted(reactivated)}\n'
     'pressure_and_displacement_declaration=synchronized\n'
+    'canonical_small_initial_step=retained\n'
     'canonical_rm_media_and_full_operator=retained\n'
     'external_and_initial_load_for_lifecycle_gate=zero\n'
     'runtime_exit=0\n', encoding='utf-8')
