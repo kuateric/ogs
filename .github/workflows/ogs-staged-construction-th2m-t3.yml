@@ -14,6 +14,21 @@ on:
       - 'scripts/run-ogs-staged-construction-th2m-t2c.sh'
       - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
       - '.github/workflows/ogs-staged-construction-th2m-t3.yml'
+  push:
+    branches:
+      - 'agent/ogs-staged-construction-th2m-t0'
+    paths:
+      - 'automation-evidence/th2m-t3-literature-basis.md'
+      - 'scripts/ogs-staged-construction-th2m-t3-contract.py'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t3-runtime.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t3.sh'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t3-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2d.sh'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t2d.py'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2c.sh'
+      - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
+      - '.github/workflows/ogs-staged-construction-th2m-t3.yml'
   workflow_dispatch:
 
 jobs:
