@@ -82,12 +82,16 @@ jobs:
           PY
       - name: Execute authoritative loaded TH2M-T3 runtime
         shell: bash
-        run: bash scripts/run-ogs-staged-construction-th2m-t3.sh
+        run: |
+          set -o pipefail
+          bash scripts/run-ogs-staged-construction-th2m-t3.sh 2>&1 | tee th2m-t3-driver.log
+          test "${PIPESTATUS[0]}" -eq 0
       - name: Freeze TH2M-T3 evidence
         if: always()
         run: |
           mkdir -p staged-construction-th2m-t3-evidence
           printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=TH2M_T3_loaded_construction_equilibrium_runtime\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-th2m-t3-evidence/provenance.txt
+          test ! -f th2m-t3-driver.log || cp th2m-t3-driver.log staged-construction-th2m-t3-evidence/driver.log
           test ! -f th2m-t3-evidence.txt || cp th2m-t3-evidence.txt staged-construction-th2m-t3-evidence/
           test ! -f ogs-th2m-t3/th2m-t3.log || cp ogs-th2m-t3/th2m-t3.log staged-construction-th2m-t3-evidence/runtime.log
       - name: Upload TH2M-T3 evidence
