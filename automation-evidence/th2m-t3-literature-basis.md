@@ -13,7 +13,7 @@ Canonical OGS authority: `adf770974c7ee0435702fe617634d03d17ab7cb8`
 
 T2A–T2D already establish synchronized p_g / p_c / T / displacement lifecycle and fresh stress-free constitutive/MFront-MGIS birth. T3 adds only the loaded construction-equilibrium requirement:
 
-1. At `inactive -> active`, capture the already-proven fresh placement state: last-converged displacement reference, explicit gas-pressure/capillary-pressure/temperature placement state, and fresh constitutive state.
+1. At `inactive -> active`, capture the already-proven fresh placement state: last-converged displacement reference, explicit gas-pressure placement state, explicit capillary-pressure placement state, explicit temperature placement state, and fresh constitutive state.
 2. Restore equilibrium with the normal monolithic TH2M residual/Jacobian: mechanics, gas transport/storage, liquid transport/storage, thermal storage/conduction, and all THM couplings remain active.
 3. Construction restoration occurs at the same physical target time. Newton iterations are nonlinear equilibrium iterations, not additional physical timesteps.
 4. No stiffness scaling, residual scaling/homotopy, material interpolation/homotopy, or artificial construction pseudo-time is permitted.
