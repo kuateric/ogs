@@ -1,0 +1,29 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T3
+
+on:
+  pull_request:
+    paths:
+      - 'automation-evidence/th2m-t3-literature-basis.md'
+      - 'scripts/ogs-staged-construction-th2m-t3-contract.py'
+      - '.github/workflows/ogs-staged-construction-th2m-t3.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t3-loaded-equilibrium-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical authority and literature-first scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'adf770974c7ee0435702fe617634d03d17ab7cb8' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'Abaqus' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'FLAC3D' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'full physical operator' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'same physical target time' automation-evidence/th2m-t3-literature-basis.md
+      - name: Run deterministic TH2M-T3 architecture contract
+        run: python3 scripts/ogs-staged-construction-th2m-t3-contract.py
+      - name: Enforce no implicit HM/TRM inheritance
+        shell: bash
+        run: grep -q 'TH2M requires its own runtime evidence' automation-evidence/th2m-t3-literature-basis.md
