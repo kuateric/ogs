@@ -19,24 +19,15 @@ if not runtime.is_file():
     raise RuntimeError('TH2M-T3 expected generated T2D runtime is missing')
 src = runtime.read_text(encoding='utf-8')
 
-# Isolate runtime paths/evidence from T2D.
 src = src.replace('TH2M-T2D', 'TH2M-T3').replace('th2m-t2d', 'th2m-t3').replace('TH2M_T2D', 'TH2M_T3')
 
-# Restore a genuine physical mechanical load. The reactivated material therefore
-# enters a non-zero equilibrium problem through the ordinary TH2M body-force
-# operator; there is no artificial construction load or continuation parameter.
 load_anchor = "proc.find('specific_body_force').text = '0 0'"
 if src.count(load_anchor) != 1:
     raise RuntimeError('TH2M-T3 specific-body-force anchor changed')
 src = src.replace(load_anchor, "proc.find('specific_body_force').text = '0 -9.81'", 1)
 
-# The compact T1B/T2D fixture used a full-domain displacement Dirichlet solely to
-# keep the lifecycle probe nonsingular. Replace that over-constraint with the
-# minimum 2-D rigid-body suppression: node 0 fixes x/y and node 1 fixes y.
-# Boundary point meshes are written from the quadratic bulk mesh and carry the
-# canonical bulk_node_ids mapping used by OGS Dirichlet BCs.
 identity_end = "p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')\nPY\n\npython3 - <<'PY'\nfrom pathlib import Path\nimport xml.etree.ElementTree as ET\n"
-support_writer = r'''p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+support_writer = r"""p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
 PY
 
 python3 - <<'PY'
@@ -77,7 +68,7 @@ PY
 python3 - <<'PY'
 from pathlib import Path
 import xml.etree.ElementTree as ET
-'''
+"""
 if src.count(identity_end) != 1:
     raise RuntimeError('TH2M-T3 support-mesh injection anchor changed')
 src = src.replace(identity_end, support_writer, 1)
@@ -116,11 +107,8 @@ if src.count(bc_block) != 1:
     raise RuntimeError('TH2M-T3 displacement-BC anchor changed')
 src = src.replace(bc_block, bc_replacement, 1)
 
-# T3 must prove an actual equilibrium correction, not only assembly. Read the
-# ordinary OGS PVD/VTU outputs and require the converged displacement field to
-# change between the inactive t=1 state and the reactivated t=2 state.
 evidence_anchor = "Path('../th2m-t3-evidence.txt').write_text("
-evidence_insert = r'''import xml.etree.ElementTree as ET
+evidence_insert = r"""import xml.etree.ElementTree as ET
 import math
 pvd_files = list(Path('th2m-t3-out').glob('*.pvd'))
 if not pvd_files:
@@ -165,6 +153,7 @@ correction = max(
 if not correction > 1e-14:
     raise RuntimeError(f'no measurable loaded construction-equilibrium correction: {correction}')
 Path('../th2m-t3-evidence.txt').write_text('''
+"""
 if src.count(evidence_anchor) != 1:
     raise RuntimeError('TH2M-T3 evidence anchor changed')
 src = src.replace(evidence_anchor, evidence_insert, 1)
