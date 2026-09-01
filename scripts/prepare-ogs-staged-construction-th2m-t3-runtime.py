@@ -32,18 +32,15 @@ PY
 
 python3 - <<'PY'
 from pathlib import Path
-import re
 
-bulk = Path('th2m-t3-case/domain.vtu').read_text(encoding='utf-8')
-pts_match = re.search(r'<Points>\s*<DataArray[^>]*NumberOfComponents="3"[^>]*>(.*?)</DataArray>\s*</Points>', bulk, re.S)
-if not pts_match:
-    raise RuntimeError('TH2M-T3 bulk points not found')
-vals = [float(x) for x in pts_match.group(1).split()]
-if len(vals) < 6:
-    raise RuntimeError('TH2M-T3 requires at least two bulk nodes')
-
-def write_point_mesh(path, bulk_id):
-    xyz = vals[3 * bulk_id:3 * bulk_id + 3]
+# Boundary-to-bulk correspondence in OGS is authoritative through
+# bulk_node_ids. Do not scrape coordinates from domain.vtu here: the canonical
+# fixture and createQuadraticMesh legitimately use VTK appended encoding, for
+# which Point DataArray text is empty. Point coordinates in these one-node
+# Dirichlet submeshes are therefore only geometric metadata; the bulk IDs below
+# select the actual mechanics DOFs. Distinct coordinates keep the point meshes
+# well-formed without changing the physical bulk geometry or operator.
+def write_point_mesh(path, bulk_id, xyz):
     Path(path).write_text(f'''<?xml version="1.0"?>
 <VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian">
   <UnstructuredGrid>
@@ -61,8 +58,8 @@ def write_point_mesh(path, bulk_id):
 </VTKFile>
 ''', encoding='utf-8')
 
-write_point_mesh('th2m-t3-case/support0.vtu', 0)
-write_point_mesh('th2m-t3-case/support1.vtu', 1)
+write_point_mesh('th2m-t3-case/support0.vtu', 0, (0.0, 0.0, 0.0))
+write_point_mesh('th2m-t3-case/support1.vtu', 1, (1.0, 0.0, 0.0))
 PY
 
 python3 - <<'PY'
