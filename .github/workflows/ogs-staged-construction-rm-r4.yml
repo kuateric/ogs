@@ -159,7 +159,11 @@ jobs:
           if reb is None or tuple(map(int,reb.groups()[1:]))!=(1,0):
               raise RuntimeError('missing authoritative A->B constitutive rebind evidence')
           birth=re.search(r'RM fresh-birth event published.*?at t=([-+0-9.eE]+)',log)
-          if birth is None or abs(float(birth.group(1))-4320.0)>1e-9:
+          # The subdomain remains deactivated through the configured interval end
+          # t=4320. Reactivation/birth is therefore observed on the next physical
+          # solve, t=4334; requiring t=4320 would contradict the proven lifecycle
+          # interval semantics rather than test constitutive reassignment.
+          if birth is None or abs(float(birth.group(1))-4334.0)>1e-9:
               raise RuntimeError(f'unexpected material-B birth time: {birth.group(1) if birth else None}')
           summary=re.search(r'The whole computation of the time stepping took (\d+) steps, in which\s+the accepted steps are (\d+), and the rejected steps are (\d+)',log)
           if not summary:
@@ -177,6 +181,7 @@ jobs:
               'stress_free_birth=true\nexplicit_p_L0=true\n'
               'full_physical_operator=true\n'
               'stiffness_scaling=false\nresidual_homotopy=false\nmaterial_homotopy=false\n'
+              'activation_time=4334\n'
               'physical_time_steps=4\nrejected_steps=0\nruntime_exit=0\n')
           PY
       - name: Freeze RM-R4 evidence
