@@ -16,14 +16,14 @@ test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
 # exercised by HM-B2. No numerical continuation, stiffness scaling, residual
 # homotopy, or material homotopy is introduced. The canonical RM A2 benchmark
 # already declares the same deactivated material subdomain for pressure and
-# displacement; this gate turns that declaration into a reversible interval and
-# instruments the real monolithic RM local assembler.
+# displacement; this gate changes only the lifecycle schedule to a reversible
+# interval and instruments the real monolithic RM local assembler.
 python3 - <<'PY'
 from pathlib import Path
 p = Path('ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h')
 text = p.read_text(encoding='utf-8')
 anchor = '''void RichardsMechanicsLocalAssembler<ShapeFunctionDisplacement,\n                                     ShapeFunctionPressure, DisplacementDim>::\n    assembleWithJacobian(double const t, double const dt,\n                         std::vector<double> const& local_x,\n                         std::vector<double> const& local_x_prev,\n                         std::vector<double>& local_rhs_data,\n                         std::vector<double>& local_Jac_data)\n{\n'''
-replacement = anchor + '''    INFO("RM-R1 coupled assembly element {:d} at t = {:g}", this->element_.getID(), t);\n'''
+replacement = anchor + '''    INFO("RM-R1 coupled assembly element {} at t = {:g}", this->element_.getID(), t);\n'''
 if text.count(anchor) != 1:
     raise RuntimeError('unexpected RichardsMechanics assembleWithJacobian entry')
 p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
@@ -58,36 +58,26 @@ for name in ('pressure', 'displacement'):
         if x is not None:
             ds.remove(x)
     ti = ET.Element('time_interval')
-    ET.SubElement(ti, 'start').text = '1.01'
-    ET.SubElement(ti, 'end').text = '2.01'
+    ET.SubElement(ti, 'start').text = '2160'
+    ET.SubElement(ti, 'end').text = '4320'
     ds.insert(0, ti)
 
-for par in root.findall('./parameters/parameter'):
-    name = (par.findtext('name') or '').strip()
-    if name in {'pressure0', 'pressure_tunnel', 'pressure_outside', 'load_top'}:
-        vals = par.find('values')
-        if vals is not None:
-            vals.text = '0'
-    if name == 'sigma0':
-        for expr in par.findall('expression'):
-            expr.text = '0'
-
-# Preserve the canonical A2 small initial equilibration step (0.01 s), then
-# traverse the reversible construction interval with deterministic 1 s steps.
+# Preserve the canonical A2 physical parameters unchanged. Use only the first
+# four canonical time increments so the lifecycle probe remains compact while
+# retaining the benchmark's established numerical time scale:
+# 0 -> 0.01 -> 2160 -> 4320 -> 4334 s.
 ts = root.find('./time_loop/processes/process/time_stepping')
 if ts is None:
     raise RuntimeError('missing RM time stepping')
 for child in list(ts):
     if child.tag in {'t_end', 'timesteps'}:
         ts.remove(child)
-ET.SubElement(ts, 't_end').text = '3.01'
+ET.SubElement(ts, 't_end').text = '4334'
 timesteps = ET.SubElement(ts, 'timesteps')
-pair0 = ET.SubElement(timesteps, 'pair')
-ET.SubElement(pair0, 'repeat').text = '1'
-ET.SubElement(pair0, 'delta_t').text = '0.01'
-pair1 = ET.SubElement(timesteps, 'pair')
-ET.SubElement(pair1, 'repeat').text = '3'
-ET.SubElement(pair1, 'delta_t').text = '1'
+for dt in ('0.01', '2159.99', '2160', '14'):
+    pair = ET.SubElement(timesteps, 'pair')
+    ET.SubElement(pair, 'repeat').text = '1'
+    ET.SubElement(pair, 'delta_t').text = dt
 
 tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
 PY
@@ -113,16 +103,16 @@ log = Path('rm-r1.log').read_text(errors='replace')
 pat = re.compile(r'RM-R1 coupled assembly element (\d+) at t = ([-+0-9.eE]+)')
 by_time = {}
 for e, t in pat.findall(log):
-    by_time.setdefault(round(float(t), 12), set()).add(int(e))
-for t in (0.01, 1.01, 2.01, 3.01):
+    by_time.setdefault(round(float(t), 8), set()).add(int(e))
+for t in (0.01, 2160.0, 4320.0, 4334.0):
     if t not in by_time:
         raise RuntimeError(f'missing RM-R1 assembly snapshot at t={t}; available={sorted(by_time)}')
-a0, a1, a2, a3 = by_time[0.01], by_time[1.01], by_time[2.01], by_time[3.01]
+a0, a1, a2, a3 = by_time[0.01], by_time[2160.0], by_time[4320.0], by_time[4334.0]
 if not a0:
     raise RuntimeError('RM-R1 missing pre-construction active domain')
 inactive_candidates = [s for s in (a1, a2) if s < a3]
 if not inactive_candidates:
-    raise RuntimeError(f'RM domain did not shrink: t1.01={len(a1)} t2.01={len(a2)} t3.01={len(a3)}')
+    raise RuntimeError(f'RM domain did not shrink: t2160={len(a1)} t4320={len(a2)} t4334={len(a3)}')
 inactive = min(inactive_candidates, key=len)
 reactivated = a3 - inactive
 if not reactivated:
@@ -131,14 +121,13 @@ Path('../rm-r1-evidence.txt').write_text(
     'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
     'gate=RM_R1_synchronized_pressure_displacement_domain_lifecycle\n'
     f'active_elements_t0.01={sorted(a0)}\n'
-    f'active_elements_t1.01={sorted(a1)}\n'
-    f'active_elements_t2.01={sorted(a2)}\n'
-    f'active_elements_t3.01={sorted(a3)}\n'
+    f'active_elements_t2160={sorted(a1)}\n'
+    f'active_elements_t4320={sorted(a2)}\n'
+    f'active_elements_t4334={sorted(a3)}\n'
     f'reactivated_elements={sorted(reactivated)}\n'
     'pressure_and_displacement_declaration=synchronized\n'
-    'canonical_small_initial_step=retained\n'
-    'canonical_rm_media_and_full_operator=retained\n'
-    'external_and_initial_load_for_lifecycle_gate=zero\n'
+    'canonical_a2_physics=unchanged\n'
+    'canonical_time_increments=0.01,2159.99,2160,14\n'
     'runtime_exit=0\n', encoding='utf-8')
 print(Path('../rm-r1-evidence.txt').read_text())
 PY
