@@ -89,3 +89,50 @@ if text.count(anchor) != 1:
     raise RuntimeError('canonical TH2M global Jacobian assembly anchor changed')
 text = text.replace(anchor, probe, 1)
 p.write_text(text, encoding='utf-8')
+
+# T3H diagnostic only: follow the Newton residual across the canonical
+# Dirichlet application and into the linear-solver update. These are read-only
+# norm probes. They do not change the residual, Jacobian, known-solution set,
+# linear solve, convergence criterion, or any physical/numerical parameter.
+p = Path('NumLib/ODESolver/NonlinearSolver.cpp')
+text = p.read_text(encoding='utf-8')
+pre_bc = """        minus_delta_x.setZero();
+
+        timer_dirichlet.start();
+        sys.applyKnownSolutionsNewton(J, res, *x[process_id], minus_delta_x);
+        time_dirichlet += timer_dirichlet.elapsed();
+        INFO(\"[time] Applying Dirichlet BCs took {:g} s.\", time_dirichlet);
+"""
+pre_bc_probe = """        minus_delta_x.setZero();
+
+        INFO(\"TH2M-T3H Newton residual before BC iteration={:d} norm2={:.17g}\",
+             iteration, LinAlg::norm2(res));
+        timer_dirichlet.start();
+        sys.applyKnownSolutionsNewton(J, res, *x[process_id], minus_delta_x);
+        time_dirichlet += timer_dirichlet.elapsed();
+        INFO(\"TH2M-T3H Newton residual after BC iteration={:d} norm2={:.17g}\",
+             iteration, LinAlg::norm2(res));
+        INFO(\"TH2M-T3H prescribed minus_delta_x after BC iteration={:d} norm2={:.17g}\",
+             iteration, LinAlg::norm2(minus_delta_x));
+        INFO(\"[time] Applying Dirichlet BCs took {:g} s.\", time_dirichlet);
+"""
+if text.count(pre_bc) != 1:
+    raise RuntimeError('canonical Newton Dirichlet anchor changed')
+text = text.replace(pre_bc, pre_bc_probe, 1)
+
+post_solve = """#endif
+        INFO(\"[time] Linear solver took {:g} s.\", time_linear_solver.elapsed());
+
+        if (!iteration_succeeded)
+"""
+post_solve_probe = """#endif
+        INFO(\"TH2M-T3H Newton minus_delta_x after solve iteration={:d} norm2={:.17g}\",
+             iteration, LinAlg::norm2(minus_delta_x));
+        INFO(\"[time] Linear solver took {:g} s.\", time_linear_solver.elapsed());
+
+        if (!iteration_succeeded)
+"""
+if text.count(post_solve) != 1:
+    raise RuntimeError('canonical Newton linear-solve anchor changed')
+text = text.replace(post_solve, post_solve_probe, 1)
+p.write_text(text, encoding='utf-8')
