@@ -64,8 +64,8 @@ jobs:
                   x = ds.find(tag)
                   if x is not None: ds.remove(x)
               ti = ET.Element('time_interval')
-              ET.SubElement(ti,'start').text='1'
-              ET.SubElement(ti,'end').text='2'
+              ET.SubElement(ti,'start').text='1.01'
+              ET.SubElement(ti,'end').text='2.01'
               ds.insert(0,ti)
           # Isolate birth-state semantics from loaded equilibrium; R3 adds construction loading.
           for par in root.findall('./parameters/parameter'):
@@ -78,14 +78,20 @@ jobs:
                   if vals is not None: vals.text='-25000'
               if name == 'sigma0':
                   for expr in par.findall('expression'): expr.text='0'
+          # Retain the canonical A2 0.01 s initial equilibration step. The prior
+          # 1 s first step was a harness perturbation and caused pressure-criterion
+          # stagnation before any activation event; no tolerance is weakened here.
           ts=root.find('./time_loop/processes/process/time_stepping')
           for child in list(ts):
               if child.tag in {'t_end','timesteps'}: ts.remove(child)
-          ET.SubElement(ts,'t_end').text='3'
+          ET.SubElement(ts,'t_end').text='3.01'
           steps=ET.SubElement(ts,'timesteps')
-          pair=ET.SubElement(steps,'pair')
-          ET.SubElement(pair,'repeat').text='3'
-          ET.SubElement(pair,'delta_t').text='1'
+          pair0=ET.SubElement(steps,'pair')
+          ET.SubElement(pair0,'repeat').text='1'
+          ET.SubElement(pair0,'delta_t').text='0.01'
+          pair1=ET.SubElement(steps,'pair')
+          ET.SubElement(pair1,'repeat').text='3'
+          ET.SubElement(pair1,'delta_t').text='1'
           tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
           PY
       - name: Execute RM-R2B authoritative runtime
@@ -106,7 +112,7 @@ jobs:
         if: always()
         run: |
           mkdir -p staged-construction-rm-r2b-evidence
-          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=RM_R2B_fresh_birth_runtime\njob_status=%s\npolicy=u_birth:last_converged,p_L0:last_converged_explicit,stress_birth:zero,operator:full\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-rm-r2b-evidence/provenance.txt
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=RM_R2B_fresh_birth_runtime\njob_status=%s\npolicy=u_birth:last_converged,p_L0:last_converged_explicit,stress_birth:zero,operator:full\ncanonical_initial_step=0.01\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-rm-r2b-evidence/provenance.txt
           cp ogs-rm-r2b/rm-r2b.log staged-construction-rm-r2b-evidence/ 2>/dev/null || true
           cd ogs-rm-r2b && git diff > ../staged-construction-rm-r2b-evidence/r2b.patch || true
       - name: Upload RM-R2B evidence
