@@ -149,7 +149,7 @@ correction = max(
 )
 if not correction > 1e-14:
     raise RuntimeError(f'no measurable loaded construction-equilibrium correction: {correction}')
-Path('../th2m-t3-evidence.txt').write_text('''
+Path('../th2m-t3-evidence.txt').write_text(
 """
 if src.count(evidence_anchor) != 1:
     raise RuntimeError('TH2M-T3 evidence anchor changed')
