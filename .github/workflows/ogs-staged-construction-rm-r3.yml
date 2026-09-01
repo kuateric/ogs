@@ -1,0 +1,161 @@
+name: OGS-STAGED-CONSTRUCTION-RM-R3
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-rm-r3.yml'
+      - 'scripts/ogs-staged-construction-rm-r2b-fresh-birth-runtime.py'
+  workflow_dispatch:
+
+jobs:
+  rm-r3-loaded-construction-equilibrium:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Checkout pinned canonical OGS
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-rm-r3
+          cd ogs-rm-r3
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+      - name: Apply passed RM fresh-birth implementation
+        run: |
+          cp scripts/ogs-staged-construction-rm-r2b-fresh-birth-runtime.py /tmp/rm-r2b.py
+          cd ogs-rm-r3
+          python3 /tmp/rm-r2b.py
+          git diff --check
+      - name: Configure and compile RM
+        working-directory: ogs-rm-r3
+        run: |
+          cmake --preset release --fresh -DOGS_BUILD_GUI=OFF -DOGS_BUILD_UTILS=OFF -DOGS_BUILD_TESTING=ON '-DOGS_BUILD_PROCESSES=RichardsMechanics'
+          cmake --build --preset release --target ProcessLib RichardsMechanics ogs --parallel 2
+      - name: Prepare loaded reversible RM construction case
+        working-directory: ogs-rm-r3
+        run: |
+          cp -a Tests/Data/RichardsMechanics rm-r3-case
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p=Path('rm-r3-case/A2.prj')
+          tree=ET.parse(p); root=tree.getroot()
+          variables={pv.findtext('name').strip():pv for pv in root.findall('./process_variables/process_variable')}
+          for name in ('pressure','displacement'):
+              pv=variables[name]
+              ds=pv.find('deactivated_subdomains/deactivated_subdomain')
+              if ds is None or (ds.findtext('material_ids') or '').strip()!='1':
+                  raise RuntimeError(f'missing synchronized RM lifecycle for {name}')
+              for tag in ('time_curve','line_segment','boundary_parameter'):
+                  x=ds.find(tag)
+                  if x is not None: ds.remove(x)
+              ti=ET.Element('time_interval')
+              ET.SubElement(ti,'start').text='2160'
+              ET.SubElement(ti,'end').text='4320'
+              ds.insert(0,ti)
+
+          # Keep the canonical A2 loading and initial stress exactly intact.
+          # In particular load_top=-12 MPa and sigma0 remain physical, so birth
+          # into the loaded system must restore equilibrium through the normal
+          # Newton solve with the full RM operator. No pseudo-time/homotopy is added.
+          body=root.find('./processes/process/specific_body_force')
+          if body is None or (body.text or '').strip()!='0 0 0':
+              raise RuntimeError('unexpected canonical A2 body force')
+          load_top=next((x for x in root.findall('./parameters/parameter') if x.findtext('name')=='load_top'),None)
+          if load_top is None or float(load_top.findtext('values'))!=-12e6:
+              raise RuntimeError('canonical A2 top load changed')
+
+          ts=root.find('./time_loop/processes/process/time_stepping')
+          for child in list(ts):
+              if child.tag in {'t_end','timesteps'}: ts.remove(child)
+          ET.SubElement(ts,'t_end').text='4334'
+          steps=ET.SubElement(ts,'timesteps')
+          for dt in ('0.01','2159.99','2160','14'):
+              pair=ET.SubElement(steps,'pair')
+              ET.SubElement(pair,'repeat').text='1'
+              ET.SubElement(pair,'delta_t').text=dt
+          tree.write(p,encoding='ISO-8859-1',xml_declaration=True)
+          PY
+      - name: Execute authoritative loaded RM-R3 runtime
+        working-directory: ogs-rm-r3
+        run: |
+          set -euo pipefail
+          OGS_BIN="$(find "${GITHUB_WORKSPACE}/build/release" -type f -name ogs -perm -111 | head -n1)"
+          test -n "$OGS_BIN"
+          mkdir -p rm-r3-out
+          "$OGS_BIN" -o rm-r3-out rm-r3-case/A2.prj > rm-r3.log 2>&1
+          cat rm-r3.log
+          grep -Eqi 'Simulation completed|OGS completed|simulation terminated successfully|OGS terminated successfully' rm-r3.log
+          grep -q 'RM fresh-birth event published' rm-r3.log
+          grep -q 'RM fresh-birth state initialized' rm-r3.log
+          grep -q 'RM birth reference captured' rm-r3.log
+          ! grep -Eqi 'stiffness[_ -]?scale|residual[_ -]?homotopy|material[_ -]?homotopy' rm-r3.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          log=Path('rm-r3.log').read_text(errors='replace')
+          # The first solve after reactivation must have a real Newton correction.
+          # Newton iterations themselves all evaluate the same target physical time;
+          # no extra construction/pseudo-time step is introduced.
+          starts=list(re.finditer(r'Time step #(\d+) started\.',log))
+          birth=re.search(r'RM fresh-birth event published.*?at t=([-+0-9.eE]+)',log)
+          if birth is None:
+              raise RuntimeError('missing RM birth event')
+          bt=float(birth.group(1))
+          # Find the time-step block containing the birth event.
+          pos=birth.start(); block=None; step_no=None
+          for i,m in enumerate(starts):
+              end=starts[i+1].start() if i+1<len(starts) else len(log)
+              if m.start()<=pos<end:
+                  block=log[m.start():end]; step_no=int(m.group(1)); break
+          if block is None:
+              raise RuntimeError('birth event not located in a physical time-step block')
+          dx=[float(v) for v in re.findall(r'\|dx\|=([-+0-9.eE]+)',block)]
+          if not dx or max(abs(v) for v in dx)<=1e-14:
+              raise RuntimeError(f'loaded birth produced no measurable equilibrium correction: {dx}')
+          summary=re.search(r'The whole computation of the time stepping took (\d+) steps, in which\s+the accepted steps are (\d+), and the rejected steps are (\d+)',log)
+          if not summary:
+              raise RuntimeError('missing physical time-step summary')
+          total,accepted,rejected=map(int,summary.groups())
+          if (total,accepted,rejected)!=(4,4,0):
+              raise RuntimeError(f'unexpected time stepping: {(total,accepted,rejected)}')
+          Path('../rm-r3-evidence.txt').write_text(
+              'upstream_sha=adf770974c7ee0435702fe617634d03d17ab7cb8\n'
+              'gate=RM_R3_loaded_construction_equilibrium\n'
+              f'birth_physical_time={bt:.17g}\n'
+              f'birth_time_step={step_no}\n'
+              f'max_birth_step_newton_correction={max(abs(v) for v in dx):.17g}\n'
+              'canonical_top_load=-12e6\n'
+              'canonical_initial_stress_preserved=true\n'
+              'full_physical_operator=true\n'
+              'stiffness_scaling=false\nresidual_homotopy=false\nmaterial_homotopy=false\n'
+              'extra_construction_time_steps=0\n'
+              'newton_equilibrium_at_fixed_target_time=true\n'
+              'physical_time_steps=4\nrejected_steps=0\nruntime_exit=0\n')
+          PY
+      - name: Freeze RM-R3 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-rm-r3-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=RM_R3_loaded_construction_equilibrium\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-rm-r3-evidence/provenance.txt
+          cp ogs-rm-r3/rm-r3.log staged-construction-rm-r3-evidence/ 2>/dev/null || true
+          cp rm-r3-evidence.txt staged-construction-rm-r3-evidence/ 2>/dev/null || true
+          cd ogs-rm-r3 && git diff > ../staged-construction-rm-r3-evidence/r3.patch || true
+      - name: Upload RM-R3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-rm-r3-${{ github.sha }}
+          path: staged-construction-rm-r3-evidence
