@@ -1,0 +1,50 @@
+name: OGS-STAGED-CONSTRUCTION-RM-R2A
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-rm-r2a-fresh-birth-contract.py'
+      - 'automation-evidence/rm-r2-literature-basis.md'
+      - '.github/workflows/ogs-staged-construction-rm-r2a.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ogs-rm-r2a-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rm-r2a-fresh-birth-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OGS_UPSTREAM_URL: https://github.com/ufz/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout canonical OGS authority
+        run: |
+          git clone --filter=blob:none "$OGS_UPSTREAM_URL" canonical-ogs
+          git -C canonical-ogs checkout --detach "$OGS_UPSTREAM_SHA"
+          test "$(git -C canonical-ogs rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+      - name: Verify RM fresh-birth ownership contract
+        run: |
+          python3 scripts/ogs-staged-construction-rm-r2a-fresh-birth-contract.py \
+            canonical-ogs/ProcessLib/RichardsMechanics/LocalAssemblerInterface.h \
+            canonical-ogs/ProcessLib/RichardsMechanics/RichardsMechanicsFEM.h \
+            canonical-ogs/ProcessLib/RichardsMechanics/RichardsMechanicsFEM-impl.h | tee rm-r2a-evidence.txt
+      - name: Freeze RM-R2A evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-rm-r2a-evidence
+          printf 'gate=RM-R2A\nupstream_sha=%s\nworkflow_sha=%s\njob_status=%s\nfull_R2_pass=false\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-rm-r2a-evidence/provenance.txt
+          cp rm-r2a-evidence.txt staged-construction-rm-r2a-evidence/ 2>/dev/null || true
+          cp automation-evidence/rm-r2-literature-basis.md staged-construction-rm-r2a-evidence/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ogs-staged-construction-rm-r2a-${{ github.sha }}
+          path: staged-construction-rm-r2a-evidence
+          retention-days: 7

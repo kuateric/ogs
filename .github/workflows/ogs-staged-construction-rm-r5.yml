@@ -1,0 +1,49 @@
+name: OGS-STAGED-CONSTRUCTION-RM-R5
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-rm-r5.yml'
+      - 'scripts/run-ogs-staged-construction-rm-r5.sh'
+      - 'scripts/ogs-staged-construction-r0.py'
+      - 'scripts/ogs-staged-construction-r2g.py'
+      - 'scripts/ogs-staged-construction-rm-r2b-fresh-birth-runtime.py'
+      - 'scripts/ogs-staged-construction-rm-r4-material-reassignment.py'
+      - 'automation-evidence/rm-r5-literature-basis.md'
+  workflow_dispatch:
+
+jobs:
+  rm-r5-mfront-mgis-cross-behaviour:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-mfront-r5-v1
+      - name: Execute authoritative RM-R5 MFront/MGIS cross-behaviour runtime
+        run: bash scripts/run-ogs-staged-construction-rm-r5.sh
+      - name: Freeze RM-R5 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-rm-r5-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=RM_R5_MFront_MGIS_cross_behaviour\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-rm-r5-evidence/provenance.txt
+          cp rm-r5-contract.txt rm-r5-evidence.txt staged-construction-rm-r5-evidence/ 2>/dev/null || true
+          cp ogs-rm-r5/rm-r5.log staged-construction-rm-r5-evidence/ 2>/dev/null || true
+          cp ogs-rm-r5/rm-r5-case/A2.prj staged-construction-rm-r5-evidence/ 2>/dev/null || true
+          cp automation-evidence/rm-r5-literature-basis.md staged-construction-rm-r5-evidence/ 2>/dev/null || true
+          cd ogs-rm-r5 && git diff > ../staged-construction-rm-r5-evidence/r5.patch || true
+      - name: Upload RM-R5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-rm-r5-${{ github.sha }}
+          path: staged-construction-rm-r5-evidence

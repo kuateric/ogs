@@ -1,0 +1,52 @@
+name: OGS-STAGED-CONSTRUCTION-RM-R0
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-rm-r0.py'
+      - '.github/workflows/ogs-staged-construction-rm-r0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ogs-rm-r0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rm-lifecycle-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OGS_UPSTREAM_URL: https://github.com/ufz/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact canonical OGS
+        run: |
+          set -euxo pipefail
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-upstream
+          cd ogs-upstream
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+      - name: Run RM-R0 canonical lifecycle probe
+        run: |
+          set -euxo pipefail
+          cp scripts/ogs-staged-construction-rm-r0.py ogs-upstream/
+          cd ogs-upstream
+          python3 ogs-staged-construction-rm-r0.py | tee rm-r0.log
+          grep -q 'RM-R0 PASS candidate' rm-r0.log
+      - name: Freeze RM-R0 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-evidence
+          printf 'gate=RM-R0\nupstream_sha=%s\nworkflow_sha=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" > staged-construction-evidence/provenance.txt
+          cp ogs-upstream/rm-r0.log staged-construction-evidence/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ogs-staged-construction-rm-r0-${{ github.sha }}
+          path: staged-construction-evidence
+          retention-days: 7
