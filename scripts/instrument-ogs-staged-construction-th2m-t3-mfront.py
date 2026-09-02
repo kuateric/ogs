@@ -136,3 +136,69 @@ if text.count(post_solve) != 1:
     raise RuntimeError('canonical Newton linear-solve anchor changed')
 text = text.replace(post_solve, post_solve_probe, 1)
 p.write_text(text, encoding='utf-8')
+
+# T3I diagnostic only: partition the RHS entering canonical Dirichlet
+# elimination into constrained ("known") and free equations. This establishes
+# whether the loaded mechanical imbalance itself resides on free DOFs or
+# whether the known-solution set unexpectedly covers it. Read-only evidence.
+p = Path('MathLib/LinAlg/Eigen/EigenTools.cpp')
+text = p.read_text(encoding='utf-8')
+include_anchor = '#include "EigenTools.h"\n'
+include_probe = '#include "EigenTools.h"\n\n#include <cmath>\n\n#include "BaseLib/Logging.h"\n'
+if text.count(include_anchor) != 1:
+    raise RuntimeError('canonical EigenTools include anchor changed')
+text = text.replace(include_anchor, include_probe, 1)
+anchor = """    auto& A_eigen = A.getRawMatrix();
+    auto& b_eigen = b.getRawVector();
+
+    using enum DirichletBCApplicationMode;
+"""
+probe = """    auto& A_eigen = A.getRawMatrix();
+    auto& b_eigen = b.getRawVector();
+
+    std::vector<unsigned char> t3i_is_known(
+        static_cast<std::size_t>(b_eigen.size()), 0);
+    std::size_t t3i_valid_known = 0;
+    long long t3i_min = b_eigen.size();
+    long long t3i_max = -1;
+    for (auto const id : vec_knownX_id)
+    {
+        if (id < 0 || id >= b_eigen.size())
+        {
+            continue;
+        }
+        auto const uid = static_cast<std::size_t>(id);
+        if (!t3i_is_known[uid])
+        {
+            t3i_is_known[uid] = 1;
+            ++t3i_valid_known;
+        }
+        auto const lid = static_cast<long long>(id);
+        if (lid < t3i_min) t3i_min = lid;
+        if (lid > t3i_max) t3i_max = lid;
+    }
+    double t3i_known_sq = 0.0;
+    double t3i_free_sq = 0.0;
+    for (Eigen::Index i = 0; i < b_eigen.size(); ++i)
+    {
+        double const v = b_eigen[i];
+        if (t3i_is_known[static_cast<std::size_t>(i)])
+        {
+            t3i_known_sq += v * v;
+        }
+        else
+        {
+            t3i_free_sq += v * v;
+        }
+    }
+    INFO(\"TH2M-T3I Dirichlet partition size={} known_raw={} known_unique={} min={} max={} known_norm={:.17g} free_norm={:.17g}\",
+         b_eigen.size(), vec_knownX_id.size(), t3i_valid_known,
+         t3i_max >= 0 ? t3i_min : -1, t3i_max,
+         std::sqrt(t3i_known_sq), std::sqrt(t3i_free_sq));
+
+    using enum DirichletBCApplicationMode;
+"""
+if text.count(anchor) != 1:
+    raise RuntimeError('canonical Eigen Dirichlet partition anchor changed')
+text = text.replace(anchor, probe, 1)
+p.write_text(text, encoding='utf-8')
