@@ -1,0 +1,119 @@
+name: OGS-STAGED-CONSTRUCTION-PHASE-C-ANCHOR-C0
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ogs-staged-construction-phase-c-anchor-c0.yml'
+      - 'scripts/ogs-staged-construction-phase-c-anchor-c0.py'
+      - 'automation-evidence/phase-c-anchor-c0-literature-basis.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anchor-c0-stress-free-birth-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3 python3-venv
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Checkout pinned canonical OGS
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ogs-phase-c-anchor-c0
+          git clone --filter=blob:none --no-checkout "$OGS_UPSTREAM_URL" ogs-phase-c-anchor-c0
+          cd ogs-phase-c-anchor-c0
+          git fetch --depth=1 origin "$OGS_UPSTREAM_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$OGS_UPSTREAM_SHA"
+      - name: Verify Phase C structural baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ogs-phase-c-anchor-c0/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp
+          test -f ogs-phase-c-anchor-c0/ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h
+          if find ogs-phase-c-anchor-c0/ProcessLib -iname '*EmbeddedBeam*' -print -quit | grep -q .; then
+            echo 'Unexpected EmbeddedBeam found in pinned canonical OGS; review structural-element authority.' >&2
+            exit 1
+          fi
+      - name: Apply Anchor C0 lifecycle implementation
+        run: |
+          cp scripts/ogs-staged-construction-phase-c-anchor-c0.py /tmp/anchor-c0.py
+          cd ogs-phase-c-anchor-c0
+          python3 /tmp/anchor-c0.py
+          git diff --check
+          git diff -- \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTerm.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTermCollection.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/SourceTermCollection.cpp \
+            ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.h \
+            ProcessLib/BoundaryConditionAndSourceTerm/EmbeddedAnchor.cpp \
+            ProcessLib/Process.cpp
+      - name: Configure SmallDeformation build
+        working-directory: ogs-phase-c-anchor-c0
+        run: cmake --preset release -DOGS_BUILD_TESTING=OFF -DOGS_BUILD_CLI=ON -DOGS_BUILD_PROCESS_SmallDeformation=ON
+      - name: Compile EmbeddedAnchor integration
+        working-directory: ogs-phase-c-anchor-c0
+        run: cmake --build --preset release --target SmallDeformation ogs --parallel 2
+      - name: Prepare staged-anchor runtime fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/anchor-meshio
+          /tmp/anchor-meshio/bin/pip -q install meshio
+          /tmp/anchor-meshio/bin/python - <<'PY'
+          import meshio
+          import numpy as np
+          from pathlib import Path
+
+          p = Path('ogs-phase-c-anchor-c0/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm/anchors.vtu')
+          mesh = meshio.read(p)
+          mesh.cell_data['activation_time'] = [
+              np.full(len(block.data), 0.5, dtype=float) for block in mesh.cells
+          ]
+          meshio.write(p, mesh, file_format='vtu', binary=True)
+          print('activation_time=0.5 written for', sum(len(c.data) for c in mesh.cells), 'anchor cells')
+          PY
+      - name: Execute authoritative stress-free anchor birth E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE_DIR="$GITHUB_WORKSPACE/ogs-phase-c-anchor-c0/Tests/Data/Mechanics/Linear/EmbeddedAnchorSourceTerm"
+          OGS_BIN="$GITHUB_WORKSPACE/build/release/bin/ogs"
+          OUT_DIR="$GITHUB_WORKSPACE/anchor-c0-runtime-output"
+          mkdir -p "$OUT_DIR"
+          cd "$CASE_DIR"
+          "$OGS_BIN" beam_two_material.prj -o "$OUT_DIR" 2>&1 | tee "$GITHUB_WORKSPACE/anchor-c0-runtime.log"
+
+          test "$(grep -c 'stress-free birth reference captured from preTimestep converged state' "$GITHUB_WORKSPACE/anchor-c0-runtime.log")" -eq 2
+          test "$(grep -c 'at t = 0.5; full physical stiffness active' "$GITHUB_WORKSPACE/anchor-c0-runtime.log")" -eq 2
+          if grep 'stress-free birth reference captured' "$GITHUB_WORKSPACE/anchor-c0-runtime.log" | grep -vq 'at t = 0.5;'; then
+            echo 'Anchor birth occurred outside the requested construction phase.' >&2
+            exit 1
+          fi
+          grep -q 'Simulation completed' "$GITHUB_WORKSPACE/anchor-c0-runtime.log"
+      - name: Freeze Anchor C0 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-phase-c-anchor-c0-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=PHASE_C_ANCHOR_C0_PRETIMESTEP_STRESS_FREE_BIRTH_RUNTIME\njob_status=%s\nembedded_anchor_present=1\nembedded_beam_present=0\nactivation_time=0.5\nfull_physical_stiffness=1\nstiffness_homotopy=0\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-phase-c-anchor-c0-evidence/provenance.txt
+          cp anchor-c0-runtime.log staged-construction-phase-c-anchor-c0-evidence/runtime.log 2>/dev/null || true
+          cd ogs-phase-c-anchor-c0 && git diff > ../staged-construction-phase-c-anchor-c0-evidence/anchor-c0.patch || true
+      - name: Upload Anchor C0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-phase-c-anchor-c0-${{ github.sha }}
+          path: staged-construction-phase-c-anchor-c0-evidence
