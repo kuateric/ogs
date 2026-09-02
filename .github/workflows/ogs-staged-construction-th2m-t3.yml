@@ -1,0 +1,118 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T3
+
+on:
+  pull_request:
+    paths:
+      - 'automation-evidence/th2m-t3-literature-basis.md'
+      - 'scripts/ogs-staged-construction-th2m-t3-contract.py'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t3-runtime.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t3.sh'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t3-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2d.sh'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t2d.py'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2c.sh'
+      - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
+      - '.github/workflows/ogs-staged-construction-th2m-t3.yml'
+  push:
+    branches:
+      - 'agent/ogs-staged-construction-th2m-t0'
+    paths:
+      - 'automation-evidence/th2m-t3-literature-basis.md'
+      - 'scripts/ogs-staged-construction-th2m-t3-contract.py'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t3-runtime.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t3.sh'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t3-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2d.sh'
+      - 'scripts/prepare-ogs-staged-construction-th2m-t2d.py'
+      - 'scripts/instrument-ogs-staged-construction-th2m-t2d-mfront.py'
+      - 'scripts/run-ogs-staged-construction-th2m-t2c.sh'
+      - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
+      - '.github/workflows/ogs-staged-construction-th2m-t3.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t3-loaded-equilibrium-runtime:
+    runs-on: ubuntu-24.04
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical authority and literature-first scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'adf770974c7ee0435702fe617634d03d17ab7cb8' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'Abaqus' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'FLAC3D' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'full physical operator' automation-evidence/th2m-t3-literature-basis.md
+          grep -q 'same physical target time' automation-evidence/th2m-t3-literature-basis.md
+      - name: Run deterministic TH2M-T3 architecture contract
+        run: python3 scripts/ogs-staged-construction-th2m-t3-contract.py
+      - name: Enforce no implicit HM/TRM inheritance
+        shell: bash
+        run: grep -q 'TH2M requires its own runtime evidence' automation-evidence/th2m-t3-literature-basis.md
+      - name: Install MFront build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-mfront-v1
+      - name: Inherit authoritative T1B/T2D fixture normalization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
+          text = p.read_text(encoding='utf-8')
+          old = 'DataArray type="Int64" Name="bulk_node_ids"'
+          new = 'DataArray type="UInt64" Name="bulk_node_ids"'
+          if text.count(old) != 1:
+              raise RuntimeError('unexpected T3/T1B bulk_node_ids fixture anchor')
+          text = text.replace(old, new, 1)
+          text = text.replace('-DOGS_BUILD_UTILS=OFF', '-DOGS_BUILD_UTILS=ON', 1)
+          build_old = 'cmake --build --preset release --target ProcessLib TH2M ogs --parallel 2'
+          build_new = 'cmake --build --preset release --target ProcessLib TH2M ogs createQuadraticMesh --parallel 2'
+          if text.count(build_old) != 1:
+              raise RuntimeError('unexpected T3/T1B build target anchor')
+          text = text.replace(build_old, build_new, 1)
+          copy_anchor = "cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n"
+          quadratic = """cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n\nQUAD_BIN=\"$(find \"${GITHUB_WORKSPACE:-$PWD/..}/build/release\" -type f -name createQuadraticMesh -perm -111 | head -n1)\"\ntest -n \"$QUAD_BIN\"\n\"$QUAD_BIN\" -i th2m-t1b-case/domain.vtu -o th2m-t1b-case/domain.vtu\n"""
+          if text.count(copy_anchor) != 1:
+              raise RuntimeError('unexpected T3/T1B mesh anchor')
+          text = text.replace(copy_anchor, quadratic, 1)
+          ids_old = "replacement = '''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19</DataArray>\\n      </PointData>'''"
+          ids_new = """import re\nmatch = re.search(r'NumberOfPoints=\"(\\d+)\"', text)\nif not match:\n    raise RuntimeError('quadratic T3 fixture NumberOfPoints missing')\nnumber_of_points = int(match.group(1))\nbulk_node_ids = ' '.join(str(i) for i in range(number_of_points))\nreplacement = f'''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">{bulk_node_ids}</DataArray>\\n      </PointData>'''"""
+          if text.count(ids_old) != 1:
+              raise RuntimeError('unexpected T3/T1B identity-map anchor')
+          text = text.replace(ids_old, ids_new, 1)
+          marker = """# MaterialID 1 is active at initialization so the global TH2M DOF structure is\n"""
+          scalar_reference = """for name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
+          if text.count(marker) != 1:
+              raise RuntimeError('unexpected T3/T1B scalar reference anchor')
+          text = text.replace(marker, scalar_reference + marker, 1)
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Execute authoritative loaded TH2M-T3 runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/run-ogs-staged-construction-th2m-t3.sh 2>&1 | tee th2m-t3-driver.log
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Freeze TH2M-T3 evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-th2m-t3-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=TH2M_T3_loaded_construction_equilibrium_runtime\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-th2m-t3-evidence/provenance.txt
+          test ! -f th2m-t3-driver.log || cp th2m-t3-driver.log staged-construction-th2m-t3-evidence/driver.log
+          test ! -f th2m-t3-evidence.txt || cp th2m-t3-evidence.txt staged-construction-th2m-t3-evidence/
+          test ! -f ogs-th2m-t3/th2m-t3.log || cp ogs-th2m-t3/th2m-t3.log staged-construction-th2m-t3-evidence/runtime.log
+      - name: Upload TH2M-T3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-th2m-t3-${{ github.sha }}
+          path: staged-construction-th2m-t3-evidence

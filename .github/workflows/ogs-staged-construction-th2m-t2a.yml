@@ -1,0 +1,31 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T2A
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-th2m-t2a-fresh-birth-contract.py'
+      - '.github/workflows/ogs-staged-construction-th2m-t2a.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t2a-fresh-birth-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned canonical TH2M constitutive sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=adf770974c7ee0435702fe617634d03d17ab7cb8
+          mkdir -p /tmp/th2m-t2a
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/kuateric/ogs/${SHA}/ProcessLib/TH2M/TH2MFEM.h" \
+            -o /tmp/th2m-t2a/TH2MFEM.h
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/kuateric/ogs/${SHA}/ProcessLib/TH2M/TH2MFEM-impl.h" \
+            -o /tmp/th2m-t2a/TH2MFEM-impl.h
+      - name: Verify literature-guided TH2M fresh-birth state ownership
+        run: |
+          python3 scripts/ogs-staged-construction-th2m-t2a-fresh-birth-contract.py \
+            /tmp/th2m-t2a/TH2MFEM.h \
+            /tmp/th2m-t2a/TH2MFEM-impl.h

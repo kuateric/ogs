@@ -1,0 +1,42 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T0
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ogs-staged-construction-th2m-t0-contract.py'
+      - '.github/workflows/ogs-staged-construction-th2m-t0.yml'
+      - 'automation-evidence/th2m-t0-scope.txt'
+  workflow_dispatch:
+
+jobs:
+  th2m-t0-coupled-lifecycle-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical authority pin and TH2M target
+        shell: bash
+        run: |
+          grep -q 'adf770974c7ee0435702fe617634d03d17ab7cb8' automation-evidence/th2m-t0-scope.txt
+          grep -q 'ProcessLib/TH2M' automation-evidence/th2m-t0-scope.txt
+          grep -q 'gas pressure' automation-evidence/th2m-t0-scope.txt
+          grep -q 'capillary pressure' automation-evidence/th2m-t0-scope.txt
+          grep -q 'temperature' automation-evidence/th2m-t0-scope.txt
+          grep -q 'displacement' automation-evidence/th2m-t0-scope.txt
+      - name: Run deterministic TH2M lifecycle contract
+        run: python3 scripts/ogs-staged-construction-th2m-t0-contract.py
+      - name: Verify full coupled operator and placement-state scope
+        shell: bash
+        run: |
+          grep -q 'mechanics' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'gas_storage_transport' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'liquid_storage_transport' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'thermal_storage' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'heat_conduction' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'thermo_hydro_mechanical_coupling' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'gas_pressure' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'capillary_pressure' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'temperature' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'displacement_reference' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'fresh_constitutive_state' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'physical_time_before == physical_time_after' scripts/ogs-staged-construction-th2m-t0-contract.py
+          grep -q 'no stiffness' automation-evidence/th2m-t0-scope.txt

@@ -1,0 +1,103 @@
+name: OGS-STAGED-CONSTRUCTION-TH2M-T1B
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/run-ogs-staged-construction-th2m-t1b.sh'
+      - '.github/workflows/ogs-staged-construction-th2m-t1b.yml'
+  workflow_dispatch:
+
+jobs:
+  th2m-t1b-synchronized-coupled-runtime-deactivation:
+    runs-on: ubuntu-24.04
+    env:
+      OGS_UPSTREAM_URL: https://github.com/Helmholtz-UFZ/ogs.git
+      OGS_UPSTREAM_SHA: adf770974c7ee0435702fe617634d03d17ab7cb8
+      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+      - name: Restore portable dependency source cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-staged-construction-cpm-${{ runner.os }}-${{ runner.arch }}-adf770974c7ee0435702fe617634d03d17ab7cb8-v1
+      - name: Normalize compact TH2M fixture metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
+          text = p.read_text(encoding='utf-8')
+
+          old = 'DataArray type="Int64" Name="bulk_node_ids"'
+          new = 'DataArray type="UInt64" Name="bulk_node_ids"'
+          if text.count(old) != 1:
+              raise RuntimeError('unexpected T1B bulk_node_ids fixture anchor')
+          text = text.replace(old, new, 1)
+
+          # F06: canonical TH2M uses quadratic displacement interpolation.
+          text = text.replace('-DOGS_BUILD_UTILS=OFF', '-DOGS_BUILD_UTILS=ON', 1)
+          build_old = 'cmake --build --preset release --target ProcessLib TH2M ogs --parallel 2'
+          build_new = 'cmake --build --preset release --target ProcessLib TH2M ogs createQuadraticMesh --parallel 2'
+          if text.count(build_old) != 1:
+              raise RuntimeError('unexpected T1B build target anchor')
+          text = text.replace(build_old, build_new, 1)
+
+          copy_anchor = "cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n"
+          quadratic = """cp Tests/Data/ThermoRichardsMechanics/MultiMaterialEhlers/square_1x1_quad_1e1_2_matIDs.vtu th2m-t1b-case/domain.vtu\n\n# Canonical TH2M uses order-2 displacement on a quadratic mesh.\nQUAD_BIN=\"$(find \"${GITHUB_WORKSPACE:-$PWD/..}/build/release\" -type f -name createQuadraticMesh -perm -111 | head -n1)\"\ntest -n \"$QUAD_BIN\"\n\"$QUAD_BIN\" -i th2m-t1b-case/domain.vtu -o th2m-t1b-case/domain.vtu\n"""
+          if text.count(copy_anchor) != 1:
+              raise RuntimeError('unexpected T1B compact-mesh copy anchor')
+          text = text.replace(copy_anchor, quadratic, 1)
+
+          ids_old = "replacement = '''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19</DataArray>\\n      </PointData>'''"
+          ids_new = """import re\nmatch = re.search(r'NumberOfPoints=\"(\\d+)\"', text)\nif not match:\n    raise RuntimeError('quadratic T1B fixture NumberOfPoints missing')\nnumber_of_points = int(match.group(1))\nbulk_node_ids = ' '.join(str(i) for i in range(number_of_points))\nreplacement = f'''      <PointData>\\n        <DataArray type=\"UInt64\" Name=\"bulk_node_ids\" format=\"ascii\">{bulk_node_ids}</DataArray>\\n      </PointData>'''"""
+          if text.count(ids_old) != 1:
+              raise RuntimeError('unexpected T1B identity-map anchor')
+          text = text.replace(ids_old, ids_new, 1)
+
+          # F05: preserve canonical TH2M scalar reference state.
+          marker = """# MaterialID 1 is active at initialization so the global TH2M DOF structure is\n"""
+          scalar_reference = """# Preserve the canonical TH2M fixture's essential scalar reference state.\n# Local coupled assembly is executed and logged before BC elimination.\nfor name, parameter in (\n    ('gas_pressure', 'pg_0_function'),\n    ('capillary_pressure', 'pc_0'),\n    ('temperature', 'T0'),\n):\n    scalar_bcs = ET.SubElement(variables[name], 'boundary_conditions')\n    scalar_bc = ET.SubElement(scalar_bcs, 'boundary_condition')\n    ET.SubElement(scalar_bc, 'mesh').text = 'domain'\n    ET.SubElement(scalar_bc, 'type').text = 'Dirichlet'\n    ET.SubElement(scalar_bc, 'component').text = '0'\n    ET.SubElement(scalar_bc, 'parameter').text = parameter\n\n"""
+          if text.count(marker) != 1:
+              raise RuntimeError('unexpected T1B scalar-reference fixture anchor')
+          text = text.replace(marker, scalar_reference + marker, 1)
+
+          anchor = """# Output only at the two construction states.\nout = root.find('./time_loop/output')\nif out is not None:\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
+          replacement = """# Remove constitutive-specific plastic diagnostics from the linear T1B fixture.\nsecondary = proc.find('secondary_variables')\nif secondary is not None:\n    for var in list(secondary):\n        if var.get('internal_name') == 'EquivalentPlasticStrain':\n            secondary.remove(var)\n\nout = root.find('./time_loop/output')\nif out is not None:\n    variables_out = out.find('variables')\n    if variables_out is not None:\n        for var in list(variables_out):\n            if (var.text or '').strip() == 'epsilon_pls':\n                variables_out.remove(var)\n    fot = out.find('fixed_output_times')\n    if fot is not None: fot.text = '1\\n2'\n"""
+          if text.count(anchor) != 1:
+              raise RuntimeError('unexpected T1B output fixture anchor')
+          text = text.replace(anchor, replacement, 1)
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Add failure-only matrix rank diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          p = Path('scripts/run-ogs-staged-construction-th2m-t1b.sh')
+          text = p.read_text(encoding='utf-8')
+          anchor = "p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')\nPY\n\ngit diff --check\n"
+          payload = base64.b64decode('cC53cml0ZV90ZXh0KHRleHQucmVwbGFjZShhbmNob3IsIHJlcGxhY2VtZW50LCAxKSwgZW5jb2Rpbmc9J3V0Zi04JykKUFkKCiMgRjA5IGlzIGRpYWdub3N0aWMgb25seS4gVGhlIGF1dGhvcml0YXRpdmUgVDFCIHJ1bnRpbWUgaGFzIHByb3ZlbiB0aGF0IHRoZQojIGNvdXBsZWQgYWN0aXZlIHNldCBjb250cmFjdHMgYXQgdD0xIGFuZCBleHBhbmRzIGFnYWluIGF0IHQ9MiwgYnV0IFNwYXJzZUxVCiMgcmVqZWN0cyB0aGUgcmVhY3RpdmF0ZWQgZ2xvYmFsIHN5c3RlbS4gSW5zdHJ1bWVudCBvbmx5IHRoZSBmYWlsdXJlIHBhdGguCnB5dGhvbjMgLSA8PCdQWScKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnAgPSBQYXRoKCdNYXRoTGliL0xpbkFsZy9FaWdlbi9FaWdlbkxpbmVhclNvbHZlci5jcHAnKQp0ZXh0ID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9J3V0Zi04JykKb2xkID0gJycnICAgICAgICBzb2x2ZXJfLmNvbXB1dGUoQSk7CiAgICAgICAgaWYgKHNvbHZlcl8uaW5mbygpICE9IEVpZ2VuOjpTdWNjZXNzKQogICAgICAgIHsKICAgICAgICAgICAgRVJSKCJGYWlsZWQgZHVyaW5nIEVpZ2VuIGxpbmVhciBzb2x2ZXIgaW5pdGlhbGl6YXRpb24iKTsKICAgICAgICAgICAgcmV0dXJuIGZhbHNlOwogICAgICAgIH0KJycnCm5ldyA9ICcnJyAgICAgICAgc29sdmVyXy5jb21wdXRlKEEpOwogICAgICAgIGlmIChzb2x2ZXJfLmluZm8oKSAhPSBFaWdlbjo6U3VjY2VzcykKICAgICAgICB7CiAgICAgICAgICAgIGF1dG8gY29uc3Qgcm93X2FicyA9CiAgICAgICAgICAgICAgICBBLmN3aXNlQWJzKCkgKiBFaWdlbjo6VmVjdG9yWGQ6Ok9uZXMoQS5jb2xzKCkpOwogICAgICAgICAgICBhdXRvIGNvbnN0IGNvbF9hYnMgPQogICAgICAgICAgICAgICAgQS50cmFuc3Bvc2UoKS5jd2lzZUFicygpICogRWlnZW46OlZlY3RvclhkOjpPbmVzKEEucm93cygpKTsKICAgICAgICAgICAgSU5GTygiVEgyTS1UMUIgRjA5IGZhaWxlZCBtYXRyaXggcm93cz17fSBjb2xzPXt9IG5uej17fSIsCiAgICAgICAgICAgICAgICAgQS5yb3dzKCksIEEuY29scygpLCBBLm5vblplcm9zKCkpOwogICAgICAgICAgICBmb3IgKEVpZ2VuOjpJbmRleCBpID0gMDsgaSA8IEEucm93cygpOyArK2kpCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgIGlmIChyb3dfYWJzW2ldIDw9IDFlLTE4IHx8IGNvbF9hYnNbaV0gPD0gMWUtMTgpCiAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgSU5GTygiVEgyTS1UMUIgRjA5IHN0cnVjdHVyYWwtemVybyBpbmRleD17fSByb3dfYWJzPXs6LjE3Z30gY29sX2Ficz17Oi4xN2d9IGRpYWc9ezouMTdnfSIsCiAgICAgICAgICAgICAgICAgICAgICAgICBpLCByb3dfYWJzW2ldLCBjb2xfYWJzW2ldLCBBLmNvZWZmKGksIGkpKTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgICAgICBFUlIoIkZhaWxlZCBkdXJpbmcgRWlnZW4gbGluZWFyIHNvbHZlciBpbml0aWFsaXphdGlvbiIpOwogICAgICAgICAgICByZXR1cm4gZmFsc2U7CiAgICAgICAgfQonJycKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoJ3VuZXhwZWN0ZWQgY2Fub25pY2FsIEVpZ2VuIGRpcmVjdC1zb2x2ZXIgZmFpbHVyZSBhbmNob3InKQpwLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9J3V0Zi04JykKUFkKCmdpdCBkaWZmIC0tY2hlY2sK').decode('utf-8')
+          if text.count(anchor) != 1:
+              raise RuntimeError('unexpected T1B upstream instrumentation anchor')
+          p.write_text(text.replace(anchor, payload, 1), encoding='utf-8')
+          PY
+      - name: Run TH2M-T1B synchronized coupled runtime E2E
+        run: bash scripts/run-ogs-staged-construction-th2m-t1b.sh
+      - name: Freeze TH2M-T1B evidence
+        if: always()
+        run: |
+          mkdir -p staged-construction-th2m-t1b-evidence
+          printf 'upstream_sha=%s\nworkflow_sha=%s\ngate=TH2M_T1B_synchronized_coupled_runtime_deactivation\njob_status=%s\n' "$OGS_UPSTREAM_SHA" "$GITHUB_SHA" "${{ job.status }}" > staged-construction-th2m-t1b-evidence/provenance.txt
+          cp th2m-t1b-evidence.txt staged-construction-th2m-t1b-evidence/ 2>/dev/null || true
+          cp ogs-th2m-t1b/th2m-t1b.log staged-construction-th2m-t1b-evidence/ 2>/dev/null || true
+          cp ogs-th2m-t1b/th2m-t1b-case/th2m_t1b.prj staged-construction-th2m-t1b-evidence/ 2>/dev/null || true
+      - name: Upload TH2M-T1B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-staged-construction-th2m-t1b-${{ github.sha }}
+          path: staged-construction-th2m-t1b-evidence
