@@ -24,17 +24,17 @@ from pathlib import Path
 p = Path('/tmp/run-th2m-t3.sh')
 text = p.read_text(encoding='utf-8')
 anchor = "tree.write(p, encoding='ISO-8859-1', xml_declaration=True)\nPY\n\nOGS_BIN="
-replacement = """# TH2M-T3J: do not neutralize the physical construction imbalance with the
-# inherited initial-residual compensation from ExcavationTH2M.
-comp = variables['displacement'].find('compensate_non_equilibrium_initial_residuum')
-if comp is None:
-    raise RuntimeError('TH2M-T3 displacement initial-residual compensation anchor missing')
-comp.text = 'false'
-
-tree.write(p, encoding='ISO-8859-1', xml_declaration=True)
-PY
-
-OGS_BIN="""
+replacement = (
+    "# TH2M-T3J: do not neutralize the physical construction imbalance with the\n"
+    "# inherited initial-residual compensation from ExcavationTH2M.\n"
+    "comp = variables['displacement'].find('compensate_non_equilibrium_initial_residuum')\n"
+    "if comp is None:\n"
+    "    raise RuntimeError('TH2M-T3 displacement initial-residual compensation anchor missing')\n"
+    "comp.text = 'false'\n\n"
+    "tree.write(p, encoding='ISO-8859-1', xml_declaration=True)\n"
+    "PY\n\n"
+    "OGS_BIN="
+)
 if text.count(anchor) != 1:
     raise RuntimeError('TH2M-T3 generated project-write anchor changed')
 text = text.replace(anchor, replacement, 1)
