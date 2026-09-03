@@ -1684,6 +1684,30 @@ public:
             local_b.noalias() += N.transpose() * ((C_post_int_pt - C_int_pt) /
                                                   dt * porosity * w);
         }
+
+        // NUMO: positivity-preserving row-sum lumping of the reaction projection.
+        //
+        // With the consistent reaction mass matrix M_C, the assembled source
+        // satisfies, for constant porosity,
+        //
+        //   b = (F_post - M_C * C_old) / dt.
+        //
+        // Replacing only M_C by its row-sum lumped counterpart M_L would leave
+        // this source inconsistent and can itself create negative nodal values.
+        // Therefore compensate the source at the same time, giving
+        //
+        //   b_L = b + (M_C - M_L) * C_old / dt,
+        //
+        // and hence (for K=0) M_L * C_new = F_post. For non-negative
+        // integration-point concentrations and non-negative shape functions,
+        // this diagonal projection is positivity preserving while retaining
+        // the element-integrated mass.
+        auto const consistent_mass_times_C = (local_M * local_C).eval();
+        auto const lumped_reaction_mass = local_M.rowwise().sum().eval();
+        local_M.setZero();
+        local_M.diagonal() = lumped_reaction_mass;
+        local_b.noalias() +=
+            (consistent_mass_times_C - local_M * local_C) / dt;
     }
 
     std::vector<double> const& getIntPtLiquidDensity(
