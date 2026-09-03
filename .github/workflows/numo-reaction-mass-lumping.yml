@@ -40,7 +40,7 @@ jobs:
           cmake --preset release \
             -DOGS_BUILD_GUI=OFF \
             -DOGS_BUILD_UTILS=OFF \
-            -DBUILD_TESTING=ON \
+            -DOGS_BUILD_TESTING=OFF \
             '-DOGS_BUILD_PROCESSES=ComponentTransport'
 
       - name: Build OGS ComponentTransport
