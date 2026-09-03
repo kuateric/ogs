@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euxo pipefail
           cmake --build --preset release --parallel 2 --target ogs
-          OGS_BIN="$(find build/release build -type f -name ogs -perm -111 2>/dev/null | head -n1)"
+          OGS_BIN="$(find ../build/release ../build -type f -name ogs -perm -111 2>/dev/null | head -n1)"
           test -n "$OGS_BIN"
           echo "OGS_BIN=$(readlink -f "$OGS_BIN")" >> "$GITHUB_ENV"
 
