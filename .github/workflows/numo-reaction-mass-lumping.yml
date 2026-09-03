@@ -20,7 +20,7 @@ jobs:
       - name: Checkout exact NUMO branch
         uses: actions/checkout@v4
         with:
-          fetch-depth: 3
+          fetch-depth: 4
 
       - name: Verify OGS 6.5.8 ancestry
         run: |
