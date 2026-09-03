@@ -9,8 +9,15 @@ on:
       - .github/workflows/numo-reaction-mass-lumping.yml
   workflow_dispatch:
 
+concurrency:
+  group: numo-reaction-mass-lumping-6.5.8
+  cancel-in-progress: true
+
 permissions:
   contents: write
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
 
 jobs:
   build-and-reactive-transport-tests:
@@ -33,6 +40,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Restore OGS dependency cache
+        uses: actions/cache@v4
+        with:
+          path: .cpm-cache
+          key: ogs-numo-6.5.8-cpm-v1
 
       - name: Configure focused OGS build
         run: |
