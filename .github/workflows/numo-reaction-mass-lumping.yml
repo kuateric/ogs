@@ -20,11 +20,12 @@ jobs:
       - name: Checkout exact NUMO branch
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 3
 
       - name: Verify OGS 6.5.8 ancestry
         run: |
           set -euxo pipefail
+          git cat-file -e b81fb2eb16525b8f3b67fd9169dfbf0cc4501d53^{commit}
           git merge-base --is-ancestor b81fb2eb16525b8f3b67fd9169dfbf0cc4501d53 HEAD
 
       - name: Apply reaction mass-lumping implementation
