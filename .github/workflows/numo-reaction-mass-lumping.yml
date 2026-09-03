@@ -1,0 +1,88 @@
+name: NUMO reaction mass lumping 6.5.8
+
+on:
+  push:
+    branches:
+      - agent/numo-reaction-mass-lumping-6.5.8
+    paths:
+      - scripts/numo_reaction_mass_lumping.py
+      - .github/workflows/numo-reaction-mass-lumping.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-reactive-transport-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact NUMO branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify OGS 6.5.8 ancestry
+        run: |
+          set -euxo pipefail
+          git merge-base --is-ancestor b81fb2eb16525b8f3b67fd9169dfbf0cc4501d53 HEAD
+
+      - name: Apply reaction mass-lumping implementation
+        run: |
+          set -euxo pipefail
+          python3 scripts/numo_reaction_mass_lumping.py
+          git diff --check
+          git diff -- ProcessLib/ComponentTransport/ComponentTransportFEM.h
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git python3
+
+      - name: Configure focused OGS build
+        run: |
+          set -euxo pipefail
+          cmake --preset release \
+            -DOGS_BUILD_GUI=OFF \
+            -DOGS_BUILD_UTILS=OFF \
+            -DBUILD_TESTING=ON \
+            '-DOGS_BUILD_PROCESSES=ComponentTransport'
+
+      - name: Build OGS ComponentTransport
+        run: |
+          set -euxo pipefail
+          cmake --build --preset release --parallel 2 --target ogs
+          OGS_BIN="$(find build/release build -type f -name ogs -perm -111 2>/dev/null | head -n1)"
+          test -n "$OGS_BIN"
+          echo "OGS_BIN=$(readlink -f "$OGS_BIN")" >> "$GITHUB_ENV"
+
+      - name: Run official calcite PHREEQC benchmark
+        run: |
+          set -euxo pipefail
+          case_dir="$GITHUB_WORKSPACE/Tests/Data/Parabolic/ComponentTransport/ReactiveTransport/EquilibriumPhase"
+          out="$RUNNER_TEMP/numo-calcite"
+          mkdir -p "$out"
+          (cd "$case_dir" && "$OGS_BIN" -o "$out" calcite.prj) 2>&1 | tee "$RUNNER_TEMP/calcite.log"
+          ! grep -Eqi '(^|[^a-z])nan([^a-z]|$)|negative concentration' "$RUNNER_TEMP/calcite.log"
+
+      - name: Run official kinetic PHREEQC benchmark
+        run: |
+          set -euxo pipefail
+          case_dir="$GITHUB_WORKSPACE/Tests/Data/Parabolic/ComponentTransport/ReactiveTransport/KineticReactant"
+          out="$RUNNER_TEMP/numo-kinetic"
+          mkdir -p "$out"
+          (cd "$case_dir" && "$OGS_BIN" -o "$out" 1d_isofrac_small_domain.prj) 2>&1 | tee "$RUNNER_TEMP/kinetic.log"
+          ! grep -Eqi '(^|[^a-z])nan([^a-z]|$)|negative concentration' "$RUNNER_TEMP/kinetic.log"
+
+      - name: Commit tested implementation to branch
+        run: |
+          set -euxo pipefail
+          if git diff --quiet -- ProcessLib/ComponentTransport/ComponentTransportFEM.h; then
+            echo 'Source already contains tested patch.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ProcessLib/ComponentTransport/ComponentTransportFEM.h
+          git commit -m 'ComponentTransport: lump PHREEQC reaction mass matrix'
+          git push origin HEAD:agent/numo-reaction-mass-lumping-6.5.8
