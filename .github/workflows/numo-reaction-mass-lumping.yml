@@ -59,7 +59,7 @@ jobs:
       - name: Build OGS ComponentTransport
         run: |
           set -euxo pipefail
-          cmake --build --preset release --parallel 2 --target ogs
+          cmake --build --preset release --parallel 1 --target ogs
           OGS_BIN="$(find ../build/release ../build -type f -name ogs -perm -111 2>/dev/null | head -n1)"
           test -n "$OGS_BIN"
           echo "OGS_BIN=$(readlink -f "$OGS_BIN")" >> "$GITHUB_ENV"
@@ -69,7 +69,7 @@ jobs:
           set -euxo pipefail
           bundle="$RUNNER_TEMP/ogs-numo-runtime"
           rm -rf "$bundle"
-          mkdir -p "$bundle/bin" "$bundle/lib"
+          mkdir -p "$bundle/bin" "$bundle/lib" "$bundle/python/lib"
           cp "$OGS_BIN" "$bundle/bin/ogs"
 
           # OGS shared libraries from the build tree.
@@ -89,6 +89,26 @@ jobs:
                 ;;
             esac
           done < "$RUNNER_TEMP/ogs-deps.txt"
+
+          # OGS links its embedded Python runtime even when the NUMO project
+          # itself uses no Python BC.  Ship the matching Python 3.12 stdlib so
+          # the portable validation bundle can initialize codecs off-runner.
+          PY_STDLIB="$(python3 -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
+          PY_VER="$(python3 -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')"
+          test "$PY_VER" = python3.12
+          mkdir -p "$bundle/python/lib/$PY_VER"
+          cp -a "$PY_STDLIB"/. "$bundle/python/lib/$PY_VER"/
+          rm -rf "$bundle/python/lib/$PY_VER/site-packages" "$bundle/python/lib/$PY_VER/__pycache__"
+
+          cat > "$bundle/bin/ogs-numo" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+          export LD_LIBRARY_PATH="$ROOT/lib:${LD_LIBRARY_PATH:-}"
+          export PYTHONHOME="$ROOT/python"
+          exec "$ROOT/bin/ogs" "$@"
+          EOF
+          chmod +x "$bundle/bin/ogs-numo"
 
           tar -czf "$RUNNER_TEMP/ogs-numo-runtime.tar.gz" -C "$bundle" .
           echo "OGS_BUNDLE=$RUNNER_TEMP/ogs-numo-runtime.tar.gz" >> "$GITHUB_ENV"
