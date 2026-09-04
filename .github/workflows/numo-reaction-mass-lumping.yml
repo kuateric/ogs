@@ -64,11 +64,40 @@ jobs:
           test -n "$OGS_BIN"
           echo "OGS_BIN=$(readlink -f "$OGS_BIN")" >> "$GITHUB_ENV"
 
-      - name: Upload corrected OGS binary
+      - name: Bundle corrected OGS runtime
+        run: |
+          set -euxo pipefail
+          bundle="$RUNNER_TEMP/ogs-numo-runtime"
+          rm -rf "$bundle"
+          mkdir -p "$bundle/bin" "$bundle/lib"
+          cp "$OGS_BIN" "$bundle/bin/ogs"
+
+          # OGS shared libraries from the build tree.
+          find ../build/release/lib -maxdepth 1 -type f -name '*.so*' -exec cp -L {} "$bundle/lib/" \; 2>/dev/null || true
+
+          # Resolve the complete runtime dependency tree on the build host and
+          # retain only non-system dependencies (CPM/VTK/HDF5/Python/etc.).
+          LD_LIBRARY_PATH="$(dirname "$OGS_BIN"):$GITHUB_WORKSPACE/../build/release/lib:${LD_LIBRARY_PATH:-}" \
+            ldd "$OGS_BIN" | tee "$RUNNER_TEMP/ogs-ldd.txt"
+          awk '/=> \/.* \(0x/ {print $3} /^\// {print $1}' "$RUNNER_TEMP/ogs-ldd.txt" | sort -u > "$RUNNER_TEMP/ogs-deps.txt"
+          while IFS= read -r dep; do
+            test -f "$dep" || continue
+            base="$(basename "$dep")"
+            case "$dep:$base" in
+              /home/runner/*:*|/opt/hostedtoolcache/*:*|*:*libpython3.12.so*)
+                cp -L "$dep" "$bundle/lib/$base"
+                ;;
+            esac
+          done < "$RUNNER_TEMP/ogs-deps.txt"
+
+          tar -czf "$RUNNER_TEMP/ogs-numo-runtime.tar.gz" -C "$bundle" .
+          echo "OGS_BUNDLE=$RUNNER_TEMP/ogs-numo-runtime.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload corrected OGS runtime bundle
         uses: actions/upload-artifact@v4
         with:
-          name: ogs-numo-componenttransport
-          path: ${{ env.OGS_BIN }}
+          name: ogs-numo-runtime-bundle
+          path: ${{ env.OGS_BUNDLE }}
           if-no-files-found: error
           retention-days: 3
 
