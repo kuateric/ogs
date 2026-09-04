@@ -64,6 +64,14 @@ jobs:
           test -n "$OGS_BIN"
           echo "OGS_BIN=$(readlink -f "$OGS_BIN")" >> "$GITHUB_ENV"
 
+      - name: Upload corrected OGS binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogs-numo-componenttransport
+          path: ${{ env.OGS_BIN }}
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Run official calcite PHREEQC benchmark
         run: |
           set -euxo pipefail
