@@ -30,6 +30,11 @@ std::size_t normalizeProcessGlobalIndex(
             "Mechanical-interface process DOF index cannot be normalized.");
     }
 
+    // OGS PETSc maps ghost DOFs to negative values. Usually the real global
+    // index is -index. Global DOF 0 cannot be represented as negative zero,
+    // however, so MeshComponentMap encodes that one as -num_global_dof. Do not
+    // use abs(index): resolve the encoded value against OGS' authoritative
+    // ghost-index table instead.
     auto const encoded_candidate = -index;
     auto const& ghost_indices = dof_table.getGhostIndices();
     if (std::find(ghost_indices.begin(), ghost_indices.end(),
