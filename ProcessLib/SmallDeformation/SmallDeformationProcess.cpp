@@ -37,7 +37,6 @@ SmallDeformationProcess<DisplacementDim>::SmallDeformationProcess(
           *_jacobian_assembler, is_linear, true /* use_monolithic_scheme */},
       process_data_(std::move(process_data))
 {
-    // If numerical Jacobian assembler is used.
     if (this->_jacobian_assembler->needsPicardAssembly())
     {
         OGS_FATAL(
@@ -93,6 +92,30 @@ void SmallDeformationProcess<DisplacementDim>::initializeConcreteProcess(
         NumLib::IntegrationOrder{integration_order}, mesh.isAxiallySymmetric(),
         process_data_);
 
+    // G5 topology exists before the process DOF table, but runtime pairs must
+    // use the exact same global indices as ordinary SmallDeformation. No
+    // constitutive decision is made in initializeConcreteProcess().
+    if (!mechanical_interface_pending_pairs_.empty())
+    {
+        if constexpr (DisplacementDim == 2)
+        {
+            auto runtime_pairs = ProcessLib::MechanicalInterface::
+                resolve2DPendingPairsToProcessDofs(
+                    mechanical_interface_pending_pairs_, mesh.getID(), dof_table);
+            mechanical_interface_runtime_ = std::make_unique<
+                ProcessLib::MechanicalInterface::
+                    MechanicalInterfaceSmallDeformationRuntime>(
+                        std::move(runtime_pairs),
+                        mechanical_interface_materials_);
+        }
+        else
+        {
+            OGS_FATAL(
+                "G5 mechanical interface V1 currently supports only 2D "
+                "SmallDeformation.");
+        }
+    }
+
     auto add_secondary_variable = [&](std::string const& name,
                                       int const num_components,
                                       auto get_ip_values_function)
@@ -109,9 +132,6 @@ void SmallDeformationProcess<DisplacementDim>::initializeConcreteProcess(
             DisplacementDim>::getReflectionDataForOutput(),
         _secondary_variables, getExtrapolator(), local_assemblers_);
 
-    //
-    // enable output of internal variables defined by material models
-    //
     ProcessLib::Deformation::solidMaterialInternalToSecondaryVariables<
         LocalAssemblerInterface>(process_data_.solid_materials,
                                  add_secondary_variable);
@@ -124,7 +144,6 @@ void SmallDeformationProcess<DisplacementDim>::initializeConcreteProcess(
     setIPDataInitialConditions(_integration_point_writer, mesh.getProperties(),
                                local_assemblers_);
 
-    // Initialize local assemblers after all variables have been set.
     GlobalExecutor::executeMemberOnDereferenced(
         &LocalAssemblerInterface::initialize, local_assemblers_,
         *_local_to_global_index_map);
@@ -165,6 +184,15 @@ void SmallDeformationProcess<DisplacementDim>::
 
     AssemblyMixin<SmallDeformationProcess<DisplacementDim>>::
         assembleWithJacobian(t, dt, x, x_prev, process_id, b, Jac);
+
+    // G5 interface mechanics are additive to, and intentionally evaluated
+    // after, the unchanged bulk SmallDeformation assembly. The runtime starts
+    // each evaluation from last committed interface history.
+    if (mechanical_interface_runtime_)
+    {
+        mechanical_interface_runtime_->assembleWithJacobian(
+            *x[process_id], b, Jac);
+    }
 }
 
 template <int DisplacementDim>
@@ -205,6 +233,13 @@ void SmallDeformationProcess<DisplacementDim>::postTimestepConcreteProcess(
         *x[process_id]);
 
     material_forces->copyValues(std::span{*material_forces_});
+
+    // This hook is reached only for an accepted time step. Never commit G5
+    // constitutive history from residual/Jacobian assembly itself.
+    if (mechanical_interface_runtime_)
+    {
+        mechanical_interface_runtime_->acceptTimeStep();
+    }
 }
 
 template <int DisplacementDim>
