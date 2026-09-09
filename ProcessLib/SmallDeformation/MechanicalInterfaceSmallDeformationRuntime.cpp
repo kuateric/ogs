@@ -70,6 +70,11 @@ MechanicalInterfaceSmallDeformationRuntime::
       state_manager_(pairs_.size()),
       lifecycle_(state_manager_)
 {
+    // Explicit .prj pairs bypass the geometric PairRegistry, therefore the
+    // runtime must independently enforce the same two-field topology invariant:
+    // every physical side node participates exactly once, Side A and Side B are
+    // disjoint, and one pair never maps a node onto itself. Otherwise identical
+    // interface contributions could be assembled more than once.
     std::set<std::array<std::size_t, 2>> side_a_dofs;
     std::set<std::array<std::size_t, 2>> side_b_dofs;
 
@@ -111,7 +116,8 @@ MechanicalInterfaceSmallDeformationRuntime::
         if (side_b_dofs.contains(side_a))
         {
             throw std::invalid_argument(
-                "Mechanical-interface Side A and Side B process node sets must "n                "be disjoint for the two-field topology.");
+                "Mechanical-interface Side A and Side B process node sets must "
+                "be disjoint for the two-field topology.");
         }
     }
 
@@ -156,6 +162,9 @@ MechanicalInterfaceSmallDeformationRuntime::parametersForMaterial(
 void MechanicalInterfaceSmallDeformationRuntime::assembleWithJacobian(
     GlobalVector const& x, GlobalVector& b, GlobalMatrix& jacobian)
 {
+    // Canonical OGS does not provide a process-specific reject callback for
+    // every abandoned nonlinear attempt. Reset trial output/history view before
+    // every fresh residual/Jacobian evaluation so rejected attempts cannot leak.
     lifecycle_.beginTrialAssembly();
 
     for (auto const& pair : pairs_)
@@ -178,6 +187,12 @@ void MechanicalInterfaceSmallDeformationRuntime::assembleWithJacobian(
             pair.pair_id, u_a, u_b, pair.normal, pair.initial_normal_gap,
             parameters, pair.global_indices, state_manager_);
 
+        // Emit the constitutive response from the exact process-owned trial
+        // evaluation. This is intentionally diagnostic-only: it does not alter
+        // the residual, tangent or commit/rollback mechanics. The narrow G5
+        // native gate consumes these records to prove that real .prj execution
+        // exposes gap, total slip, both tractions and contact state rather than
+        // only demonstrating that the hook was called.
         auto const& local = contribution.pair.local;
         INFO("OGS-STR-G5-RUNTIME pair={} gap={} slip={} normal_traction={} "
              "tangential_traction={} state={} plastic_slip={}",
@@ -185,6 +200,9 @@ void MechanicalInterfaceSmallDeformationRuntime::assembleWithJacobian(
              local.normal_traction, local.tangential_traction,
              toString(local.state), local.updated_history.plastic_slip);
 
+        // Generic G5 assembly returns the physical internal residual R. OGS
+        // SmallDeformation assembles the Newton right-hand side b = -R while
+        // retaining the positive consistent tangent dR/dx in Jac.
         for (auto& value : contribution.pair.residual)
         {
             value = -value;
