@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <utility>
+
 #include "LocalAssemblerInterface.h"
 #include "ProcessLib/AssemblyMixin.h"
 #include "ProcessLib/Process.h"
+#include "MechanicalInterfaceSmallDeformationRuntime.h"
 #include "SmallDeformationProcessData.h"
 
 namespace ProcessLib
@@ -37,6 +40,19 @@ public:
     //! @{
     bool isLinear() const override;
     //! @}
+
+    /// Supply interface topology and constitutive definitions before OGS creates
+    /// its DOF table. Global indices are deliberately resolved later in
+    /// initializeConcreteProcess(); material data remain a separate registry.
+    void setMechanicalInterfaceConfiguration(
+        std::vector<ProcessLib::MechanicalInterface::
+                        SmallDeformationPendingPair> pending_pairs,
+        std::vector<ProcessLib::MechanicalInterface::
+                        SmallDeformationInterfaceMaterial> materials)
+    {
+        mechanical_interface_pending_pairs_ = std::move(pending_pairs);
+        mechanical_interface_materials_ = std::move(materials);
+    }
 
 private:
     using LocalAssemblerInterface =
@@ -86,6 +102,14 @@ private:
     std::vector<std::unique_ptr<LocalAssemblerInterface>> local_assemblers_;
 
     MeshLib::PropertyVector<double>* material_forces_ = nullptr;
+
+    std::vector<ProcessLib::MechanicalInterface::SmallDeformationPendingPair>
+        mechanical_interface_pending_pairs_;
+    std::vector<ProcessLib::MechanicalInterface::SmallDeformationInterfaceMaterial>
+        mechanical_interface_materials_;
+    std::unique_ptr<ProcessLib::MechanicalInterface::
+                        MechanicalInterfaceSmallDeformationRuntime>
+        mechanical_interface_runtime_;
 };
 
 extern template class SmallDeformationProcess<2>;
