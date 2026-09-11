@@ -1,0 +1,21 @@
+{
+  "audit_role": "Independent Audit",
+  "base_sha": "5470cea39521639b48d372a15d35aa2a6bde5788",
+  "inspected_head_sha": "8a17e07467048720e9dd997479a16fbea7afa68d",
+  "compare_status": "ahead",
+  "ahead_by": 2,
+  "changed_files": [
+    "G5_PROJECT_SCALE_NATIVE_ACTIVATION_INTEGRATION.md",
+    "G5_PROJECT_SCALE_NATIVE_PATCH_PLAN.json"
+  ],
+  "native_ogs_source_files_changed": 0,
+  "frozen_g5_mechanics_files_changed": 0,
+  "verdict": "FAIL_CLOSED_IMPLEMENTATION_NOT_PRESENT",
+  "reason": "The exact source-tree diff contains only integration-contract/patch-plan evidence. No native OGS process, local-assembler, or TimeLoop source file is changed, so this head cannot be treated as implementation evidence.",
+  "required_next_transition": [
+    "Implementation role patches the resolved native SmallDeformation assembly activation gate and TimeLoop candidate/accept/reject lifecycle on this separate branch without modifying frozen G5 law semantics.",
+    "Run the narrow rejection-to-retry native coupon and archive exact-head runtime evidence.",
+    "Independent Audit inspects the resulting exact implementation SHA and coupon evidence before ULiège execution is admitted."
+  ],
+  "merge_authorized": false
+}
