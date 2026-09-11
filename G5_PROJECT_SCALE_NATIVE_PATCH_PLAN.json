@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "scope": "G5_PROJECT_SCALE_ACCEPTANCE_NATIVE_ACTIVATION_INTEGRATION",
+  "parent_sha": "5470cea39521639b48d372a15d35aa2a6bde5788",
+  "contract_sha": "15b1a75c28ded68d84c8baa52b61b80f61fd7225",
+  "frozen_engineering_os_g5_rc": "790c22a0938f2c0b3a7e95a0dc7beff3c97683d7",
+  "roadmap_g6": "HYDRAULIC_INTERFACE_UNCHANGED",
+  "frozen_g5_mechanics": "MUST_REMAIN_BYTE_IDENTICAL",
+  "implementation_order": [
+    "add case-scoped activation state carrier without changing MechanicalStructuralInterface law semantics",
+    "gate SmallDeformationLocalAssembler::assembleWithJacobian before localDOF extraction, constitutive evaluation, integration-point history mutation, and residual/Jacobian accumulation",
+    "capture converged activation reference as candidate only",
+    "commit candidate only on final accepted timestep handling",
+    "discard candidate and restore accepted reference on rejection/cutback",
+    "add inactive-zero/no-history-mutation regression",
+    "add rejection-to-retry native coupon",
+    "freeze exact post-patch SHA and hand to independent audit"
+  ],
+  "fail_closed_invariants": {
+    "inactive_residual": "EXACT_ZERO",
+    "inactive_jacobian": "EXACT_ZERO",
+    "inactive_material_history_mutation": "PROHIBITED",
+    "rejected_candidate_commit": "PROHIBITED",
+    "automatic_merge": "PROHIBITED"
+  },
+  "uliege_execution": "BLOCKED_UNTIL_NATIVE_COUPON_AND_INDEPENDENT_AUDIT_PASS"
+}
