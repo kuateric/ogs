@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "ElementActivationState.h"
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "ParameterLib/Parameter.h"
 
@@ -48,6 +49,11 @@ struct SmallDeformationProcessData
     /// An indicator to use the B bar method \cite hughes1980generalization to
     /// tackle the  volumetric locking.
     const bool use_b_bar = false;
+
+    /// Reusable accepted/candidate staging state. Default construction keeps
+    /// every element active and therefore preserves legacy SmallDeformation
+    /// behaviour until an explicit staging owner configures this state.
+    ElementActivationState element_activation_state;
 
     std::array<MeshLib::PropertyVector<double>*, 3> principal_stress_vector = {
         nullptr, nullptr, nullptr};
