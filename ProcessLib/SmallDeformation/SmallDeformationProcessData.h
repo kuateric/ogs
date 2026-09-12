@@ -7,7 +7,6 @@
 #include <memory>
 #include <utility>
 
-#include "ElementActivationState.h"
 #include "MaterialLib/MPL/MaterialSpatialDistributionMap.h"
 #include "ParameterLib/Parameter.h"
 
@@ -50,10 +49,10 @@ struct SmallDeformationProcessData
     /// tackle the  volumetric locking.
     const bool use_b_bar = false;
 
-    /// Reusable accepted/candidate staging state. Default construction keeps
-    /// every element active and therefore preserves legacy SmallDeformation
-    /// behaviour until an explicit staging owner configures this state.
-    ElementActivationState element_activation_state;
+    // Element activation is intentionally not duplicated here. The framework
+    // Process active-element set, updated from ProcessVariable deactivated
+    // subdomains and consumed by AssemblyMixin, is the single runtime
+    // authority for SmallDeformation assembly and selected lifecycle hooks.
 
     std::array<MeshLib::PropertyVector<double>*, 3> principal_stress_vector = {
         nullptr, nullptr, nullptr};
