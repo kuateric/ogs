@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <utility>
+
 #include "LocalAssemblerInterface.h"
 #include "ProcessLib/AssemblyMixin.h"
 #include "ProcessLib/Process.h"
+#include "ProcessLib/SmallDeformation/MechanicalInterfaceSmallDeformationRuntime.h"
 #include "RichardsMechanicsProcessData.h"
 
 namespace ProcessLib
@@ -58,6 +61,19 @@ public:
      */
     MathLib::MatrixSpecifications getMatrixSpecifications(
         const int process_id) const override;
+
+    /// Supply the frozen G5 V1 topology/material definitions used by
+    /// SmallDeformation. RichardsMechanics owns process integration only; the
+    /// G5 law, pair assembly, state manager, and lifecycle remain unchanged.
+    void setMechanicalInterfaceConfiguration(
+        std::vector<ProcessLib::MechanicalInterface::SmallDeformationPendingPair>
+            pending_pairs,
+        std::vector<ProcessLib::MechanicalInterface::
+                        SmallDeformationInterfaceMaterial> materials)
+    {
+        mechanical_interface_pending_pairs_ = std::move(pending_pairs);
+        mechanical_interface_materials_ = std::move(materials);
+    }
 
 private:
     using LocalAssemblerIF = LocalAssemblerInterface<DisplacementDim>;
@@ -140,6 +156,15 @@ private:
     {
         return _use_monolithic_scheme || process_id == 1;
     }
+
+    std::vector<ProcessLib::MechanicalInterface::SmallDeformationPendingPair>
+        mechanical_interface_pending_pairs_;
+    std::vector<ProcessLib::MechanicalInterface::
+                    SmallDeformationInterfaceMaterial>
+        mechanical_interface_materials_;
+    std::unique_ptr<ProcessLib::MechanicalInterface::
+                        MechanicalInterfaceSmallDeformationRuntime>
+        mechanical_interface_runtime_;
 };
 
 extern template class RichardsMechanicsProcess<2>;

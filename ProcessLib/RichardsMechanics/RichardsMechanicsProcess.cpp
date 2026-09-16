@@ -163,6 +163,28 @@ void RichardsMechanicsProcess<DisplacementDim>::initializeConcreteProcess(
         NumLib::IntegrationOrder{integration_order}, mesh.isAxiallySymmetric(),
         process_data_);
 
+    if (!mechanical_interface_pending_pairs_.empty())
+    {
+        if constexpr (DisplacementDim == 2)
+        {
+            int const displacement_variable_id = _use_monolithic_scheme ? 1 : 0;
+            auto pairs = ProcessLib::MechanicalInterface::
+                resolve2DPendingPairsToProcessDofs(
+                    mechanical_interface_pending_pairs_, mesh.getID(),
+                    dof_table, displacement_variable_id);
+            mechanical_interface_runtime_ = std::make_unique<
+                ProcessLib::MechanicalInterface::
+                    MechanicalInterfaceSmallDeformationRuntime>(
+                std::move(pairs), mechanical_interface_materials_);
+        }
+        else
+        {
+            OGS_FATAL(
+                "G5 mechanical interface V1 currently supports only 2D "
+                "RichardsMechanics.");
+        }
+    }
+
     ProcessLib::Reflection::addReflectedSecondaryVariables<DisplacementDim>(
         LocalAssemblerIF::getReflectionDataForOutput(), _secondary_variables,
         getExtrapolator(), local_assemblers_);
@@ -306,6 +328,12 @@ void RichardsMechanicsProcess<DisplacementDim>::
 
     AssemblyMixin<RichardsMechanicsProcess<DisplacementDim>>::
         assembleWithJacobian(t, dt, x, x_prev, process_id, b, Jac);
+
+    if (mechanical_interface_runtime_ && hasMechanicalProcess(process_id))
+    {
+        mechanical_interface_runtime_->assembleWithJacobian(*x[process_id], b,
+                                                             Jac);
+    }
 }
 
 template <int DisplacementDim>
@@ -338,6 +366,10 @@ void RichardsMechanicsProcess<DisplacementDim>::postTimestepConcreteProcess(
             &LocalAssemblerIF::postTimestep, local_assemblers_,
             getActiveElementIDs(), getDOFTables(x.size()), x, x_prev, t, dt,
             process_id);
+        if (mechanical_interface_runtime_)
+        {
+            mechanical_interface_runtime_->acceptTimeStep();
+        }
     }
 }
 
